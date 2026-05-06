@@ -8,6 +8,11 @@ server/data/
 server/data.db
 *.db
 
+# Documentation (sensitive screenshots)
+docs/*.png
+docs/*.jpg
+docs/*.jpeg
+
 # Frontend
 client/node_modules/
 client/dist/
