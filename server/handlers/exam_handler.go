@@ -19,10 +19,11 @@ type ExamHandler struct {
 	examRepo     *repositories.ExamRepository
 	paperRepo    *repositories.PaperRepository
 	questionRepo *repositories.QuestionRepository
+	classRepo    *repositories.ClassRepository
 }
 
-func NewExamHandler(examRepo *repositories.ExamRepository, paperRepo *repositories.PaperRepository, questionRepo *repositories.QuestionRepository) *ExamHandler {
-	return &ExamHandler{examRepo: examRepo, paperRepo: paperRepo, questionRepo: questionRepo}
+func NewExamHandler(examRepo *repositories.ExamRepository, paperRepo *repositories.PaperRepository, questionRepo *repositories.QuestionRepository, classRepo *repositories.ClassRepository) *ExamHandler {
+	return &ExamHandler{examRepo: examRepo, paperRepo: paperRepo, questionRepo: questionRepo, classRepo: classRepo}
 }
 
 // --- Request/Response structs ---
@@ -88,11 +89,13 @@ func ptrUintToSlice(id *uint) []uint {
 
 // ListPublished handles GET /api/exam/published
 func (h *ExamHandler) ListPublished(c *gin.Context) {
-	var classID *uint
+	var classIDs []uint
 	if user, ok := middleware.GetCurrentUser(c); ok {
-		classID = user.ClassID
+		ids, err := h.classRepo.ListClassIDsByStudent(context.Background(), user.ID)
+		if err == nil {
+			classIDs = ids
+		}
 	}
-	classIDs := ptrUintToSlice(classID)
 
 	papers, err := h.examRepo.ListPublishedPapers(context.Background(), classIDs)
 	if err != nil {
@@ -132,8 +135,17 @@ func (h *ExamHandler) StartAttempt(c *gin.Context) {
 	currentUser, _ := middleware.GetCurrentUser(c)
 	ctx := context.Background()
 
+	// Get all class IDs the student belongs to
+	var classIDs []uint
+	if currentUser != nil {
+		ids, err := h.classRepo.ListClassIDsByStudent(ctx, currentUser.ID)
+		if err == nil {
+			classIDs = ids
+		}
+	}
+
 	// Check if paper is published and within time window
-	pub, err := h.examRepo.FindPublicationByPaperIDForExam(ctx, uint(paperID), ptrUintToSlice(currentUser.ClassID))
+	pub, err := h.examRepo.FindPublicationByPaperIDForExam(ctx, uint(paperID), classIDs)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"message": "试卷未发布或不在考试时间"})
 		return

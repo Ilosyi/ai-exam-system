@@ -1,3 +1,36 @@
-.pnpm-store/
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Backend
+server/data/
+server/data.db
+*.db
+
+# Frontend
 client/node_modules/
+client/dist/
 client/package-lock.json
+pnpm-lock.yaml
+.pnpm-store/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.code-workspace
+
+# Build & Compilation
+*.o
+*.a
+*.so
+*.exe
+*.out
+*.app
+
+# OS specific
+Thumbs.db

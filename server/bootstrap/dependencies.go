@@ -48,7 +48,7 @@ func initDependencies(projectRoot string, db *gorm.DB) (*dependencies, error) {
 		userRepo:        userRepo,
 		questionHandler: handlers.NewQuestionHandler(questionRepo, userRepo),
 		paperHandler:    handlers.NewPaperHandler(paperRepo, questionRepo, classRepo),
-		examHandler:     handlers.NewExamHandler(examRepo, paperRepo, questionRepo),
+		examHandler:     handlers.NewExamHandler(examRepo, paperRepo, questionRepo, classRepo),
 		aiHandler:       handlers.NewAIHandler(aiService),
 		noteHandler:     handlers.NewNoteHandler(projectRoot),
 		authHandler:     handlers.NewAuthHandler(userRepo, authService),
