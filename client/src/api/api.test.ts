@@ -23,4 +23,11 @@ describe('API Modules', () => {
         const examModule = await import('../api/exam')
         expect(examModule.fetchPublishedPapers).toBeDefined()
     })
+
+    it('document module exports expected functions', async () => {
+        const documentModule = await import('../api/document')
+        expect(documentModule.fetchDocumentCourses).toBeDefined()
+        expect(documentModule.fetchDocumentDetail).toBeDefined()
+        expect(documentModule.createDocumentCourse).toBeDefined()
+    })
 })
