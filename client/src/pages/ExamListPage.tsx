@@ -29,9 +29,9 @@ function getExamStatus(paper: PublishedPaper) {
     return {
       tagColor: isActive ? "blue" : "orange",
       tagText: isActive ? "答题中" : "已开始未交卷",
-      actionText: isActive ? "继续答题" : "已结束",
-      disabled: !isActive,
-      target: `/exam/${paper.attemptId}/take`,
+      actionText: isActive ? "继续答题" : "查看详情",
+      disabled: false,
+      target: isActive ? `/exam/${paper.attemptId}/take` : `/exam/papers/${paper.paperId}/detail`,
     };
   }
 
@@ -48,9 +48,9 @@ function getExamStatus(paper: PublishedPaper) {
   return {
     tagColor: now.isBefore(start) ? "default" : "red",
     tagText: now.isBefore(start) ? "未开始" : "未参加",
-    actionText: now.isBefore(start) ? "未到考试时间" : "已结束",
-    disabled: true,
-    target: "",
+    actionText: now.isBefore(start) ? "未到考试时间" : "查看详情",
+    disabled: now.isBefore(start),
+    target: `/exam/papers/${paper.paperId}/detail`,
   };
 }
 

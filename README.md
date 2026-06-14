@@ -260,6 +260,8 @@ go build ./...
   学生个人中心、课程文档与考试历史
 - `/exam`
   兼容旧入口，自动跳转到 `/home`
+- `/exam/papers/:id/detail`
+  学生查看已发布试卷详情（未参加、未交卷、已交卷均可查看）
 - `/exam/:id/take`
   答题页
 - `/exam/:id/result`

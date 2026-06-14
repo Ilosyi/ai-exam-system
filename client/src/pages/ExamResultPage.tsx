@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, Tag, Space, Typography, Spin, Button, Descriptions } from "antd";
 import { ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import { useParams, useNavigate } from "react-router-dom";
-import { getAttemptResult } from "../api/exam";
+import { getAttemptResult, getPaperDetail } from "../api/exam";
 import type { ExamAttempt } from "../api/exam";
 import type { PaperItem } from "../types/paper";
 import dayjs from "dayjs";
@@ -16,8 +16,9 @@ const typeMap: Record<string, { color: string; text: string }> = {
 };
 
 export function ExamResultPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id, paperId } = useParams<{ id?: string; paperId?: string }>();
   const attemptId = Number(id);
+  const currentPaperId = Number(paperId);
   const navigate = useNavigate();
   const [attempt, setAttempt] = useState<ExamAttempt | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,16 +26,16 @@ export function ExamResultPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await getAttemptResult(attemptId);
+        const res = paperId ? await getPaperDetail(currentPaperId) : await getAttemptResult(attemptId);
         setAttempt(res.data);
       } catch {
-        navigate("/exam");
+        navigate("/home");
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [attemptId, navigate]);
+  }, [attemptId, currentPaperId, navigate, paperId]);
 
   if (loading) {
     return <div style={{ textAlign: "center", padding: 100 }}><Spin size="large" /></div>;
@@ -61,11 +62,17 @@ export function ExamResultPage() {
             <Descriptions.Item label="得分">{attempt.totalScore ?? "-"}</Descriptions.Item>
             <Descriptions.Item label="总分">{attempt.paper.totalScore}</Descriptions.Item>
             <Descriptions.Item label="状态">
-              <Tag color={attempt.status === "submitted" ? "green" : "orange"}>
-                {attempt.status === "submitted" ? "已交卷" : "超时自动提交"}
+              <Tag color={attempt.status === "submitted" ? "green" : attempt.status === "timeout" ? "orange" : "default"}>
+                {attempt.status === "submitted"
+                  ? "已交卷"
+                  : attempt.status === "timeout"
+                    ? "超时自动提交"
+                    : attempt.status === "in_progress"
+                      ? "已开始未交卷"
+                      : "未参加"}
               </Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="开始时间">{dayjs(attempt.startedAt).format("YYYY-MM-DD HH:mm:ss")}</Descriptions.Item>
+            <Descriptions.Item label="开始时间">{attempt.startedAt ? dayjs(attempt.startedAt).format("YYYY-MM-DD HH:mm:ss") : "-"}</Descriptions.Item>
             <Descriptions.Item label="提交时间">{attempt.submittedAt ? dayjs(attempt.submittedAt).format("YYYY-MM-DD HH:mm:ss") : "-"}</Descriptions.Item>
           </Descriptions>
         </Card>

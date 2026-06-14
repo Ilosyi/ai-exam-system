@@ -85,9 +85,9 @@ export function HomePage() {
       return {
         tagColor: isActive ? "blue" : "orange",
         tagText: isActive ? "答题中" : "已开始未交卷",
-        actionText: isActive ? "继续答题" : "已结束",
-        disabled: !isActive,
-        onAction: () => navigate(`/exam/${paper.attemptId}/take`),
+        actionText: isActive ? "继续答题" : "查看详情",
+        disabled: false,
+        onAction: () => navigate(isActive ? `/exam/${paper.attemptId}/take` : `/exam/papers/${paper.paperId}/detail`),
       };
     }
 
@@ -104,9 +104,9 @@ export function HomePage() {
     return {
       tagColor: isFuture ? "default" : "red",
       tagText: isFuture ? "未开始" : "未参加",
-      actionText: isFuture ? "未到考试时间" : "已结束",
-      disabled: true,
-      onAction: () => undefined,
+      actionText: isFuture ? "未到考试时间" : "查看详情",
+      disabled: isFuture,
+      onAction: () => navigate(`/exam/papers/${paper.paperId}/detail`),
     };
   };
 

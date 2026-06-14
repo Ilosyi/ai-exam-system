@@ -116,6 +116,14 @@ export default function App() {
               </RequireAuth>
             }
           />
+          <Route
+            path="/exam/papers/:paperId/detail"
+            element={
+              <RequireAuth roles={routeRoleAccess.studentExam}>
+                <ExamResultPage />
+              </RequireAuth>
+            }
+          />
 
           <Route
             element={

@@ -73,7 +73,7 @@ type proctorEventRequest struct {
 
 // ExamAttemptResponse 答题记录响应
 type ExamAttemptResponse struct {
-	ID          uint                 `json:"id"`                 // 答题记录 ID
+	ID          uint                 `json:"id"`                 // 答题记录 ID。未参加试卷详情为 0
 	PaperID     uint                 `json:"paperId"`            // 试卷 ID
 	StudentID   uint                 `json:"studentId"`          // 学生 ID
 	StartedAt   string               `json:"startedAt"`          // 开始时间
@@ -448,6 +448,76 @@ func (h *ExamHandler) GetResult(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": toAttemptResponse(*attempt, paperResp, answerResps)})
+}
+
+// GetPaperDetail 处理按试卷查看详情请求。
+//
+// 这个接口用于学生考试历史页的“查看详情”：
+// - 已交卷/超时：返回最近一次答题记录、分数、答案和试卷题目
+// - 未参加/未交卷：也返回试卷题目，答题记录字段用于表达当前状态
+//
+// GET /api/exam/papers/:id/detail
+func (h *ExamHandler) GetPaperDetail(c *gin.Context) {
+	paperID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || paperID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "无效的试卷ID"})
+		return
+	}
+
+	ctx := context.Background()
+	currentUser, ok := middleware.GetCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "未登录"})
+		return
+	}
+
+	var classIDs []uint
+	if currentUser.Role != "admin" {
+		ids, err := h.classRepo.ListClassIDsByStudent(ctx, currentUser.ID)
+		if err == nil {
+			classIDs = ids
+		}
+	}
+
+	pub, err := h.examRepo.FindPublicationByPaperIDForExam(ctx, uint(paperID), classIDs)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"message": "试卷未发布或无权查看"})
+		return
+	}
+
+	paper, err := h.paperRepo.FindByID(ctx, uint(paperID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "试卷不存在"})
+		return
+	}
+	paperResp := toPaperResponseWithItems(*paper, h.questionRepo)
+
+	attempt, err := h.examRepo.FindAttemptByStudentAndPaper(ctx, currentUser.ID, uint(paperID))
+	if err == nil && attempt != nil {
+		answerResps := make([]ExamAnswerResponse, 0, len(attempt.Answers))
+		fullAttempt, fullErr := h.examRepo.FindAttemptByID(ctx, attempt.ID)
+		if fullErr == nil {
+			attempt = fullAttempt
+			for _, a := range fullAttempt.Answers {
+				answerResps = append(answerResps, toAnswerResponse(a))
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"data": toAttemptResponse(*attempt, &paperResp, answerResps)})
+		return
+	}
+
+	if time.Now().Before(pub.EndTime) {
+		c.JSON(http.StatusForbidden, gin.H{"message": "考试结束后才能查看试卷详情"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": ExamAttemptResponse{
+		PaperID:   uint(paperID),
+		StudentID: currentUser.ID,
+		Status:    "not_started",
+		Paper:     &paperResp,
+		Answers:   []ExamAnswerResponse{},
+	}})
 }
 
 // RecordEvent 处理记录监考事件请求。

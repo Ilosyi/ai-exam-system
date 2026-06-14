@@ -30,7 +30,7 @@ export interface ExamAttempt {
   studentId: number;
   startedAt: string;
   submittedAt: string | null;
-  status: "in_progress" | "submitted" | "timeout";
+  status: "not_started" | "in_progress" | "submitted" | "timeout";
   totalScore: number | null;
   deadline: string | null; // 答题截止时间
   paper?: import("../types/paper").Paper;
@@ -59,6 +59,10 @@ export async function submitAttempt(attemptId: number): Promise<{ message: strin
 
 export async function getAttemptResult(attemptId: number): Promise<{ data: ExamAttempt }> {
   return apiGet<{ data: ExamAttempt }>(`/exam/attempts/${attemptId}/result`);
+}
+
+export async function getPaperDetail(paperId: number): Promise<{ data: ExamAttempt }> {
+  return apiGet<{ data: ExamAttempt }>(`/exam/papers/${paperId}/detail`);
 }
 
 export async function recordProctorEvent(attemptId: number, eventType: string, payloadJson?: string): Promise<{ message: string }> {

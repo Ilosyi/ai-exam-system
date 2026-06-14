@@ -194,6 +194,7 @@ func registerAPIRoutes(r *gin.Engine, deps *dependencies) {
 		studentRoutes := protected.Group("")
 		studentRoutes.Use(middleware.RequireRoles("admin", "student"))
 		studentRoutes.GET("/exam/published", deps.examHandler.ListPublished)            // 已发布考试与历史记录
+		studentRoutes.GET("/exam/papers/:id/detail", deps.examHandler.GetPaperDetail)   // 查看试卷详情
 		studentRoutes.POST("/exam/papers/:id/start", deps.examHandler.StartAttempt)     // 开始答题
 		studentRoutes.GET("/exam/attempts/:id", deps.examHandler.GetAttempt)            // 获取答题详情
 		studentRoutes.PUT("/exam/attempts/:id/answers", deps.examHandler.SaveAnswers)   // 保存答案（自动保存）

@@ -578,6 +578,7 @@ type ExamAttempt struct {
 │
 └── /exam (student+admin)              # 学生+管理员
     ├── GET /published                 # 已发布考试与历史记录
+    ├── GET /papers/:id/detail         # 查看已发布试卷详情
     ├── POST /papers/:id/start         # 开始答题
     ├── GET /attempts/:id              # 答题详情
     ├── PUT /attempts/:id/answers      # 保存答案
