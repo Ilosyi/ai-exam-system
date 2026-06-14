@@ -66,8 +66,13 @@ export function DocumentManagePage() {
 
   const currentCourseId = selection?.type === "doc" ? selection.courseId : selection?.courseId;
 
-  const handleCreateCourse = () => {
+  const cancelDetailLoad = () => {
     detailRequestIdRef.current += 1;
+    setDetailLoading(false);
+  };
+
+  const handleCreateCourse = () => {
+    cancelDetailLoad();
     setSelection({ type: "course", isNew: true });
     courseForm.setFieldsValue({ id: "", title: "", description: "", order: courses.length + 1 });
   };
@@ -78,7 +83,7 @@ export function DocumentManagePage() {
       message.warning("请先创建课程，再新增文档");
       return;
     }
-    detailRequestIdRef.current += 1;
+    cancelDetailLoad();
     setSelection({ type: "doc", courseId: targetCourseId, isNew: true });
     docForm.setFieldsValue({ id: "", title: "", order: (courses.find((course) => course.id === targetCourseId)?.documents.length ?? 0) + 1, markdown: "" });
   };
@@ -89,7 +94,7 @@ export function DocumentManagePage() {
       const courseId = decodeURIComponent(key.replace(/^course:/, ""));
       const course = courses.find((item) => item.id === courseId);
       if (!course) return;
-      detailRequestIdRef.current += 1;
+      cancelDetailLoad();
       setSelection({ type: "course", courseId, isNew: false });
       courseForm.setFieldsValue({
         id: course.id,
