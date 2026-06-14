@@ -13,6 +13,7 @@ import {
   fetchDocumentDetail,
   updateDocument,
   updateDocumentCourse,
+  type CourseDocument,
   type CourseInput,
   type DocumentInput,
 } from "../api/document";
@@ -71,6 +72,17 @@ export function DocumentManagePage() {
     setDetailLoading(false);
   };
 
+  const selectCourse = (course: CourseDocument) => {
+    cancelDetailLoad();
+    setSelection({ type: "course", courseId: course.id, isNew: false });
+    courseForm.setFieldsValue({
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      order: course.order,
+    });
+  };
+
   const handleCreateCourse = () => {
     cancelDetailLoad();
     setSelection({ type: "course", isNew: true });
@@ -94,14 +106,7 @@ export function DocumentManagePage() {
       const courseId = decodeURIComponent(key.replace(/^course:/, ""));
       const course = courses.find((item) => item.id === courseId);
       if (!course) return;
-      cancelDetailLoad();
-      setSelection({ type: "course", courseId, isNew: false });
-      courseForm.setFieldsValue({
-        id: course.id,
-        title: course.title,
-        description: course.description,
-        order: course.order,
-      });
+      selectCourse(course);
       return;
     }
 
@@ -214,7 +219,12 @@ export function DocumentManagePage() {
           try {
             await deleteDocument(selection.courseId, selection.docId!);
             message.success("文档删除成功");
-            setSelection({ type: "course", courseId: selection.courseId, isNew: false });
+            const course = courses.find((item) => item.id === selection.courseId);
+            if (course) {
+              selectCourse(course);
+            } else {
+              setSelection(null);
+            }
             await reload();
           } catch (err: unknown) {
             message.error(err instanceof Error ? err.message : "文档删除失败");
