@@ -18,7 +18,6 @@ package repositories
 
 import (
 	"context"
-	"time"
 
 	"gorm.io/gorm"
 
@@ -106,17 +105,16 @@ func (r *ExamRepository) FindAnswer(ctx context.Context, attemptID, questionID u
 //
 // 查询逻辑：
 // 1. 通过 JOIN 关联 paper_publications 表
-// 2. 筛选条件：is_published = true 且当前时间在时间窗口内
+// 2. 筛选条件：is_published = true。历史、当前、未来发布记录都属于学生考试记录
 // 3. 班级筛选：公共试卷（class_id IS NULL）或学生所在班级的试卷
 //
 // 参数：
 //   - classIDs: 学生所属班级的 ID 列表
 func (r *ExamRepository) ListPublishedPapers(ctx context.Context, classIDs []uint) ([]models.Paper, error) {
 	var papers []models.Paper
-	now := time.Now()
 	query := r.db.WithContext(ctx).
 		Joins("JOIN paper_publications ON paper_publications.paper_id = papers.id").
-		Where("paper_publications.is_published = ? AND unixepoch(paper_publications.start_time) <= unixepoch(?) AND unixepoch(paper_publications.end_time) >= unixepoch(?)", true, now, now)
+		Where("paper_publications.is_published = ?", true)
 
 	if len(classIDs) == 0 {
 		// 学生不属于任何班级，只能看到公共试卷
@@ -126,7 +124,7 @@ func (r *ExamRepository) ListPublishedPapers(ctx context.Context, classIDs []uin
 		query = query.Where("paper_publications.class_id IS NULL OR paper_publications.class_id IN ?", classIDs)
 	}
 
-	if err := query.Group("papers.id").Find(&papers).Error; err != nil {
+	if err := query.Group("papers.id").Order("MAX(paper_publications.start_time) DESC").Find(&papers).Error; err != nil {
 		return nil, err
 	}
 	return papers, nil
@@ -135,7 +133,7 @@ func (r *ExamRepository) ListPublishedPapers(ctx context.Context, classIDs []uin
 // FindAttemptByStudentAndPaper 查询学生对某张试卷的答题记录（包括已提交的）。
 func (r *ExamRepository) FindAttemptByStudentAndPaper(ctx context.Context, studentID, paperID uint) (*models.ExamAttempt, error) {
 	var attempt models.ExamAttempt
-	if err := r.db.WithContext(ctx).Where("student_id = ? AND paper_id = ?", studentID, paperID).Order("created_at DESC").First(&attempt).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("student_id = ? AND paper_id = ?", studentID, paperID).Order("started_at DESC, id DESC").First(&attempt).Error; err != nil {
 		return nil, err
 	}
 	return &attempt, nil

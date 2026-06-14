@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // 本文件实现了学生考试相关的 HTTP 接口，包括：
-// - ListPublished:  可参加的考试列表
+// - ListPublished:  已发布考试与历史记录
 // - StartAttempt:   开始答题
 // - GetAttempt:     获取答题详情
 // - SaveAnswers:    保存答案（自动保存）
@@ -12,7 +12,7 @@
 // - RecordEvent:    记录监考事件
 //
 // 答题流程：
-//   查看考试列表 → 开始答题 → 自动保存答案 → 交卷 → 查看结果
+//   查看已发布考试与历史记录 → 开始答题 → 自动保存答案 → 交卷 → 查看结果
 //
 // 学习要点：
 // - 考试时间窗口的验证
@@ -60,29 +60,29 @@ type saveAnswersRequest struct {
 // answerInput 单个答案
 type answerInput struct {
 	QuestionID uint   `json:"questionId" binding:"required"` // 题目 ID
-	AnswerJSON string `json:"answerJson"`                     // 答案（JSON 字符串）
+	AnswerJSON string `json:"answerJson"`                    // 答案（JSON 字符串）
 }
 
 // proctorEventRequest 监考事件请求体
 type proctorEventRequest struct {
 	EventType   string `json:"eventType" binding:"required"` // 事件类型
-	PayloadJSON string `json:"payloadJson"`                   // 事件数据
+	PayloadJSON string `json:"payloadJson"`                  // 事件数据
 }
 
 // ---- 响应体结构体 ----
 
 // ExamAttemptResponse 答题记录响应
 type ExamAttemptResponse struct {
-	ID          uint                 `json:"id"`                    // 答题记录 ID
-	PaperID     uint                 `json:"paperId"`               // 试卷 ID
-	StudentID   uint                 `json:"studentId"`             // 学生 ID
-	StartedAt   string               `json:"startedAt"`             // 开始时间
-	SubmittedAt *string              `json:"submittedAt"`           // 交卷时间
-	Status      string               `json:"status"`                // 状态
-	TotalScore  *int                 `json:"totalScore"`            // 总分
-	Deadline    *string              `json:"deadline,omitempty"`    // 截止时间
-	Paper       *PaperResponse       `json:"paper,omitempty"`       // 试卷详情
-	Answers     []ExamAnswerResponse `json:"answers,omitempty"`     // 答案列表
+	ID          uint                 `json:"id"`                 // 答题记录 ID
+	PaperID     uint                 `json:"paperId"`            // 试卷 ID
+	StudentID   uint                 `json:"studentId"`          // 学生 ID
+	StartedAt   string               `json:"startedAt"`          // 开始时间
+	SubmittedAt *string              `json:"submittedAt"`        // 交卷时间
+	Status      string               `json:"status"`             // 状态
+	TotalScore  *int                 `json:"totalScore"`         // 总分
+	Deadline    *string              `json:"deadline,omitempty"` // 截止时间
+	Paper       *PaperResponse       `json:"paper,omitempty"`    // 试卷详情
+	Answers     []ExamAnswerResponse `json:"answers,omitempty"`  // 答案列表
 }
 
 // ExamAnswerResponse 答案响应
@@ -97,22 +97,27 @@ type ExamAnswerResponse struct {
 
 // PublishedPaperResponse 已发布试卷响应（学生视角）
 type PublishedPaperResponse struct {
-	PaperID    uint   `json:"paperId"`    // 试卷 ID
-	Title      string `json:"title"`      // 标题
-	Language   string `json:"language"`   // 语言
-	TotalScore int    `json:"totalScore"` // 总分
-	StartTime  string `json:"startTime"`  // 开始时间
-	EndTime    string `json:"endTime"`    // 结束时间
-	Duration   int    `json:"duration"`   // 答题时长（分钟）
+	PaperID            uint    `json:"paperId"`                      // 试卷 ID
+	Title              string  `json:"title"`                        // 标题
+	Language           string  `json:"language"`                     // 语言
+	TotalScore         int     `json:"totalScore"`                   // 试卷总分
+	StartTime          string  `json:"startTime"`                    // 开始时间
+	EndTime            string  `json:"endTime"`                      // 结束时间
+	Duration           int     `json:"duration"`                     // 答题时长（分钟）
+	AttemptID          *uint   `json:"attemptId,omitempty"`          // 最近一次答题记录 ID
+	AttemptStatus      *string `json:"attemptStatus,omitempty"`      // 最近一次答题状态
+	AttemptScore       *int    `json:"attemptScore,omitempty"`       // 最近一次答题得分
+	AttemptStartedAt   *string `json:"attemptStartedAt,omitempty"`   // 最近一次开始时间
+	AttemptSubmittedAt *string `json:"attemptSubmittedAt,omitempty"` // 最近一次提交时间
 }
 
 // ---- Handler 方法 ----
 
-// ListPublished 处理获取可参加考试列表请求。
+// ListPublished 处理获取学生可见考试列表请求。
 //
 // 查询逻辑：
 // 1. 获取学生所属的所有班级 ID
-// 2. 查询已发布且在时间窗口内的试卷
+// 2. 查询已发布且对学生可见的试卷，包含历史、当前、未来考试
 // 3. 筛选条件：公共试卷 或 学生所在班级的试卷
 //
 // GET /api/exam/published
@@ -137,7 +142,7 @@ func (h *ExamHandler) ListPublished(c *gin.Context) {
 		if err != nil {
 			continue
 		}
-		responses = append(responses, PublishedPaperResponse{
+		response := PublishedPaperResponse{
 			PaperID:    p.ID,
 			Title:      p.Title,
 			Language:   p.Language,
@@ -145,7 +150,24 @@ func (h *ExamHandler) ListPublished(c *gin.Context) {
 			StartTime:  pub.StartTime.Format(time.RFC3339),
 			EndTime:    pub.EndTime.Format(time.RFC3339),
 			Duration:   pub.Duration,
-		})
+		}
+
+		if user, ok := middleware.GetCurrentUser(c); ok {
+			attempt, attemptErr := h.examRepo.FindAttemptByStudentAndPaper(context.Background(), user.ID, p.ID)
+			if attemptErr == nil && attempt != nil {
+				response.AttemptID = &attempt.ID
+				response.AttemptStatus = &attempt.Status
+				response.AttemptScore = attempt.TotalScore
+				startedAt := attempt.StartedAt.Format(time.RFC3339)
+				response.AttemptStartedAt = &startedAt
+				if attempt.SubmittedAt != nil {
+					submittedAt := attempt.SubmittedAt.Format(time.RFC3339)
+					response.AttemptSubmittedAt = &submittedAt
+				}
+			}
+		}
+
+		responses = append(responses, response)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": responses})

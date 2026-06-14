@@ -8,6 +8,11 @@ export interface PublishedPaper {
   startTime: string;
   endTime: string;
   duration: number; // 答题时长(分钟), 0=不限时
+  attemptId?: number;
+  attemptStatus?: "in_progress" | "submitted" | "timeout";
+  attemptScore?: number | null;
+  attemptStartedAt?: string;
+  attemptSubmittedAt?: string;
 }
 
 export interface ExamAnswer {

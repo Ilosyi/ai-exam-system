@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Empty, Spin, Tag, Typography, message } from "antd";
-import { CalendarOutlined, LogoutOutlined, ReadOutlined, UserOutlined } from "@ant-design/icons";
+import { CalendarOutlined, CheckCircleOutlined, ClockCircleOutlined, LogoutOutlined, ReadOutlined, UserOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { fetchPublishedPapers, startAttempt, type PublishedPaper } from "../api/exam";
@@ -8,6 +8,14 @@ import { useAuth } from "../hooks/useAuth";
 import { useDocumentCourses } from "../hooks/useDocuments";
 
 const { Title, Text, Paragraph } = Typography;
+
+type ExamCardState = {
+  tagColor: string;
+  tagText: string;
+  actionText: string;
+  disabled: boolean;
+  onAction: () => void;
+};
 
 function roleLabel(role?: string) {
   if (role === "admin") {
@@ -54,6 +62,52 @@ export function HomePage() {
   const handleLogout = () => {
     logout();
     navigate("/login", { replace: true });
+  };
+
+  const getExamCardState = (paper: PublishedPaper): ExamCardState => {
+    const now = dayjs();
+    const start = dayjs(paper.startTime);
+    const end = dayjs(paper.endTime);
+    const isActive = (now.isAfter(start) || now.isSame(start)) && (now.isBefore(end) || now.isSame(end));
+    const isFuture = now.isBefore(start);
+
+    if ((paper.attemptStatus === "submitted" || paper.attemptStatus === "timeout") && paper.attemptId) {
+      return {
+        tagColor: paper.attemptStatus === "timeout" ? "orange" : "green",
+        tagText: paper.attemptStatus === "timeout" ? "超时提交" : "已交卷",
+        actionText: "查看详情",
+        disabled: false,
+        onAction: () => navigate(`/exam/${paper.attemptId}/result`),
+      };
+    }
+
+    if (paper.attemptStatus === "in_progress" && paper.attemptId) {
+      return {
+        tagColor: isActive ? "blue" : "orange",
+        tagText: isActive ? "答题中" : "答题结束",
+        actionText: isActive ? "继续答题" : "已结束",
+        disabled: !isActive,
+        onAction: () => navigate(`/exam/${paper.attemptId}/take`),
+      };
+    }
+
+    if (isActive) {
+      return {
+        tagColor: "blue",
+        tagText: "进行中",
+        actionText: "开始考试",
+        disabled: false,
+        onAction: () => handleStart(paper.paperId),
+      };
+    }
+
+    return {
+      tagColor: isFuture ? "default" : "red",
+      tagText: isFuture ? "未开始" : "未参加",
+      actionText: isFuture ? "未到考试时间" : "已结束",
+      disabled: true,
+      onAction: () => undefined,
+    };
   };
 
   return (
@@ -137,7 +191,7 @@ export function HomePage() {
       <section className="student-section">
         <div className="student-section__head">
           <Title level={4}>我的考试</Title>
-          <Text type="secondary">按开放时间进入考试，系统会自动保存答题进度</Text>
+          <Text type="secondary">查看已发布考试、历史答题记录和成绩详情</Text>
         </div>
 
         {examLoading ? (
@@ -146,32 +200,47 @@ export function HomePage() {
           </div>
         ) : papers.length === 0 ? (
           <div className="student-home__empty">
-            <Empty description="暂无可参加的考试" />
+            <Empty description="暂无已发布考试" />
           </div>
         ) : (
           <div className="student-exam-grid">
             {papers.map((paper) => {
-              const now = dayjs();
               const start = dayjs(paper.startTime);
               const end = dayjs(paper.endTime);
-              const isActive = now.isAfter(start) && now.isBefore(end);
+              const cardState = getExamCardState(paper);
 
               return (
                 <article className="student-exam-card" key={paper.paperId}>
                   <div className="student-exam-card__top">
                     <CalendarOutlined />
-                    <Tag color={isActive ? "green" : "default"}>{isActive ? "进行中" : "未开放"}</Tag>
+                    <Tag color={cardState.tagColor}>{cardState.tagText}</Tag>
                   </div>
                   <Title level={5}>{paper.title}</Title>
                   <div className="student-exam-card__meta">
                     <span>总分 {paper.totalScore}</span>
                     <span>{paper.duration > 0 ? `${paper.duration} 分钟` : "不限时"}</span>
                   </div>
+                  <div className="student-exam-card__score">
+                    {paper.attemptStatus === "submitted" || paper.attemptStatus === "timeout" ? (
+                      <>
+                        <CheckCircleOutlined />
+                        <span>得分 {paper.attemptScore ?? "-"}</span>
+                        <Text type="secondary">/ {paper.totalScore}</Text>
+                      </>
+                    ) : paper.attemptStatus === "in_progress" ? (
+                      <>
+                        <ClockCircleOutlined />
+                        <span>已开始</span>
+                      </>
+                    ) : (
+                      <Text type="secondary">暂无答题记录</Text>
+                    )}
+                  </div>
                   <Text className="student-exam-card__time">
                     {start.format("YYYY-MM-DD HH:mm")} - {end.format("YYYY-MM-DD HH:mm")}
                   </Text>
-                  <Button type="primary" disabled={!isActive} block onClick={() => handleStart(paper.paperId)}>
-                    {isActive ? "开始考试" : "不在考试时间"}
+                  <Button type="primary" disabled={cardState.disabled} block onClick={cardState.onAction}>
+                    {cardState.actionText}
                   </Button>
                 </article>
               );

@@ -9,6 +9,51 @@ import { useAuth } from "../hooks/useAuth";
 
 const { Title } = Typography;
 
+function getExamStatus(paper: PublishedPaper) {
+  const now = dayjs();
+  const start = dayjs(paper.startTime);
+  const end = dayjs(paper.endTime);
+  const isActive = (now.isAfter(start) || now.isSame(start)) && (now.isBefore(end) || now.isSame(end));
+
+  if ((paper.attemptStatus === "submitted" || paper.attemptStatus === "timeout") && paper.attemptId) {
+    return {
+      tagColor: paper.attemptStatus === "timeout" ? "orange" : "green",
+      tagText: paper.attemptStatus === "timeout" ? "超时提交" : "已交卷",
+      actionText: "查看详情",
+      disabled: false,
+      target: `/exam/${paper.attemptId}/result`,
+    };
+  }
+
+  if (paper.attemptStatus === "in_progress" && paper.attemptId) {
+    return {
+      tagColor: isActive ? "blue" : "orange",
+      tagText: isActive ? "答题中" : "答题结束",
+      actionText: isActive ? "继续答题" : "已结束",
+      disabled: !isActive,
+      target: `/exam/${paper.attemptId}/take`,
+    };
+  }
+
+  if (isActive) {
+    return {
+      tagColor: "blue",
+      tagText: "进行中",
+      actionText: "进入答题",
+      disabled: false,
+      target: "",
+    };
+  }
+
+  return {
+    tagColor: now.isBefore(start) ? "default" : "red",
+    tagText: now.isBefore(start) ? "未开始" : "未参加",
+    actionText: now.isBefore(start) ? "未到考试时间" : "已结束",
+    disabled: true,
+    target: "",
+  };
+}
+
 export function ExamListPage() {
   const [papers, setPapers] = useState<PublishedPaper[]>([]);
   const [loading, setLoading] = useState(false);
@@ -70,17 +115,16 @@ export function ExamListPage() {
           <div className="panel-surface app-fade-up" style={{ textAlign: "center", padding: 80, borderRadius: 28 }}><Spin size="large" /></div>
         ) : papers.length === 0 ? (
           <Card className="section-card app-fade-up" style={{ borderRadius: 28 }}>
-            <Empty description="暂无可参加的考试" />
+            <Empty description="暂无已发布考试" />
           </Card>
         ) : (
           <List
             grid={{ gutter: 20, column: 1 }}
             dataSource={papers}
             renderItem={(paper) => {
-              const now = dayjs();
               const start = dayjs(paper.startTime);
               const end = dayjs(paper.endTime);
-              const isActive = now.isAfter(start) && now.isBefore(end);
+              const status = getExamStatus(paper);
 
               return (
                 <List.Item className="app-fade-up">
@@ -91,6 +135,8 @@ export function ExamListPage() {
                         <div style={{ marginTop: 10, color: "#566579" }}>
                           <Tag color="blue">{paper.language}</Tag>
                           <Tag color="gold">总分 {paper.totalScore}</Tag>
+                          <Tag color={status.tagColor}>{status.tagText}</Tag>
+                          {paper.attemptScore != null && <Tag color="green">得分 {paper.attemptScore}</Tag>}
                         </div>
                         <div style={{ marginTop: 12, color: "#738196", fontSize: 13 }}>
                           <ClockCircleOutlined style={{ marginRight: 4 }} />
@@ -101,10 +147,16 @@ export function ExamListPage() {
                       <Button
                         type="primary"
                         icon={<EnterOutlined />}
-                        disabled={!isActive}
-                        onClick={() => handleStart(paper.paperId)}
+                        disabled={status.disabled}
+                        onClick={() => {
+                          if (status.target) {
+                            navigate(status.target);
+                            return;
+                          }
+                          void handleStart(paper.paperId);
+                        }}
                       >
-                        {isActive ? "进入答题" : "不在考试时间"}
+                        {status.actionText}
                       </Button>
                     </div>
                   </Card>

@@ -596,6 +596,24 @@ body {
   overflow-wrap: anywhere;
 }
 
+.student-exam-card__score {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  background: #f6f8fb;
+  color: #2563eb;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 7px 10px;
+}
+
+.student-exam-card__score .ant-typography {
+  font-size: 13px;
+  font-weight: 400;
+}
+
 .student-exam-card__time {
   display: block;
   min-height: 40px;

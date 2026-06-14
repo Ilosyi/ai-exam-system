@@ -106,7 +106,7 @@ func buildRouter(projectRoot string, deps *dependencies) *gin.Engine {
 //	│   ├── POST /generate       AI 出题
 //	│   └── POST /test           测试 AI 连接
 //	└── /exam                    (学生+管理员)
-//	    ├── GET  /published      可参加的考试列表
+//	    ├── GET  /published      已发布考试与历史记录
 //	    ├── POST /papers/:id/start  开始答题
 //	    └── /attempts/:id/*      答题相关操作
 func registerAPIRoutes(r *gin.Engine, deps *dependencies) {
@@ -190,10 +190,10 @@ func registerAPIRoutes(r *gin.Engine, deps *dependencies) {
 		teacherRoutes.DELETE("/documents/courses/:courseId/docs/:docId", deps.documentHandler.DeleteDocument)
 
 		// ---- 学生/管理员接口 ----
-		// 学生可以查看可参加的考试、答题、查看结果
+		// 学生可以查看已发布考试与历史记录、答题、查看结果
 		studentRoutes := protected.Group("")
 		studentRoutes.Use(middleware.RequireRoles("admin", "student"))
-		studentRoutes.GET("/exam/published", deps.examHandler.ListPublished)            // 可参加的考试列表
+		studentRoutes.GET("/exam/published", deps.examHandler.ListPublished)            // 已发布考试与历史记录
 		studentRoutes.POST("/exam/papers/:id/start", deps.examHandler.StartAttempt)     // 开始答题
 		studentRoutes.GET("/exam/attempts/:id", deps.examHandler.GetAttempt)            // 获取答题详情
 		studentRoutes.PUT("/exam/attempts/:id/answers", deps.examHandler.SaveAnswers)   // 保存答案（自动保存）

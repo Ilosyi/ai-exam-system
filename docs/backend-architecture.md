@@ -577,7 +577,7 @@ type ExamAttempt struct {
 │   └── POST /test                     # 测试连接
 │
 └── /exam (student+admin)              # 学生+管理员
-    ├── GET /published                 # 可参加的考试
+    ├── GET /published                 # 已发布考试与历史记录
     ├── POST /papers/:id/start         # 开始答题
     ├── GET /attempts/:id              # 答题详情
     ├── PUT /attempts/:id/answers      # 保存答案
@@ -597,7 +597,7 @@ type ExamAttempt struct {
 | 班级管理 | ✅ | ✅ (自己的) | ❌ |
 | 课程文档读取 | ✅ | ✅ | ✅ |
 | 课程文档管理 | ✅ | ✅ | ❌ |
-| 查看考试列表 | ✅ | ❌ | ✅ |
+| 查看已发布考试与历史记录 | ✅ | ❌ | ✅ |
 | 答题 | ✅ | ❌ | ✅ |
 | 查看结果 | ✅ | ❌ | ✅ |
 
