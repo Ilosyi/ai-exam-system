@@ -1,3 +1,29 @@
+// ============================================================================
+// handlers/paper_handler.go - 试卷管理接口处理器
+// ============================================================================
+//
+// 本文件实现了试卷管理相关的 HTTP 接口，包括：
+// - Generate:        智能组卷（随机选题）
+// - Create:          保存试卷
+// - List:            试卷列表
+// - Get:             试卷详情
+// - Update:          更新试卷
+// - Delete:          删除试卷
+// - ReplaceQuestion: 替换试卷中的题目
+// - DeleteItem:      删除试卷中的题目项
+// - Publish:         发布试卷
+// - Unpublish:       取消发布
+// - GetSubmissions:  查看提交统计
+//
+// 试卷生命周期：
+//   draft（草稿）→ published（已发布）→ closed（已关闭）
+//
+// 学习要点：
+// - 复杂的业务逻辑处理
+// - 时间格式的解析和验证
+// - 关联数据的查询和组装
+// ============================================================================
+
 package handlers
 
 import (
@@ -14,97 +40,114 @@ import (
 	"week05/homework/server/repositories"
 )
 
-// PaperHandler exposes endpoints for paper generation and management.
+// PaperHandler 处理试卷相关的 HTTP 请求。
 type PaperHandler struct {
 	paperRepo    *repositories.PaperRepository
 	questionRepo *repositories.QuestionRepository
 	classRepo    *repositories.ClassRepository
 }
 
+// NewPaperHandler 创建一个新的 PaperHandler 实例。
 func NewPaperHandler(paperRepo *repositories.PaperRepository, questionRepo *repositories.QuestionRepository, classRepo *repositories.ClassRepository) *PaperHandler {
 	return &PaperHandler{paperRepo: paperRepo, questionRepo: questionRepo, classRepo: classRepo}
 }
 
-// --- Request/Response structs ---
+// ---- 请求体结构体 ----
 
+// generateRequest 智能组卷请求体
 type generateRequest struct {
-	Language      string `json:"language" binding:"required,oneof=go cpp java javascript python"`
-	SingleCount   int    `json:"singleCount"`
-	MultipleCount int    `json:"multipleCount"`
-	CodingCount   int    `json:"codingCount"`
-	TotalScore    int    `json:"totalScore" binding:"required,min=1"`
+	Language      string `json:"language" binding:"required,oneof=go cpp java javascript python"` // 语言
+	SingleCount   int    `json:"singleCount"`    // 单选题数量
+	MultipleCount int    `json:"multipleCount"`  // 多选题数量
+	CodingCount   int    `json:"codingCount"`    // 编程题数量
+	TotalScore    int    `json:"totalScore" binding:"required,min=1"` // 总分
 }
 
+// savePaperRequest 保存试卷请求体
 type savePaperRequest struct {
-	Title      string          `json:"title" binding:"required"`
-	Language   string          `json:"language" binding:"required,oneof=go cpp java javascript python"`
-	Items      []savePaperItem `json:"items" binding:"required,min=1"`
-	TotalScore int             `json:"totalScore" binding:"required,min=1"`
+	Title      string          `json:"title" binding:"required"`                                         // 标题
+	Language   string          `json:"language" binding:"required,oneof=go cpp java javascript python"` // 语言
+	Items      []savePaperItem `json:"items" binding:"required,min=1"`                                   // 题目项
+	TotalScore int             `json:"totalScore" binding:"required,min=1"`                              // 总分
 }
 
+// savePaperItem 保存试卷的题目项
 type savePaperItem struct {
-	QuestionID uint   `json:"questionId" binding:"required"`
-	Type       string `json:"type" binding:"required,oneof=single multiple coding"`
-	Score      int    `json:"score" binding:"required,min=1"`
-	SortNo     int    `json:"sortNo"`
+	QuestionID uint   `json:"questionId" binding:"required"`                                       // 题目 ID
+	Type       string `json:"type" binding:"required,oneof=single multiple coding"`                // 题型
+	Score      int    `json:"score" binding:"required,min=1"`                                       // 分值
+	SortNo     int    `json:"sortNo"`                                                               // 排序号
 }
 
+// updatePaperRequest 更新试卷请求体
 type updatePaperRequest struct {
-	Title      string `json:"title"`
-	Language   string `json:"language"`
-	TotalScore *int   `json:"totalScore"`
+	Title      string `json:"title"`       // 标题
+	Language   string `json:"language"`    // 语言
+	TotalScore *int   `json:"totalScore"` // 总分
 }
 
+// replaceQuestionRequest 替换题目请求体
 type replaceQuestionRequest struct {
-	ItemID     uint `json:"itemId" binding:"required"`
-	QuestionID uint `json:"questionId"`
+	ItemID     uint `json:"itemId" binding:"required"`     // 要替换的题目项 ID
+	QuestionID uint `json:"questionId"`                    // 新的题目 ID（0 表示随机选一个）
 }
 
+// publishRequest 发布试卷请求体
 type publishRequest struct {
-	StartTime string `json:"startTime" binding:"required"`
-	EndTime   string `json:"endTime" binding:"required"`
-	Duration  int    `json:"duration"` // 答题时长(分钟), 0=不限时
-	ClassID   *uint  `json:"classId"`
+	StartTime string `json:"startTime" binding:"required"` // 开始时间（RFC3339 格式）
+	EndTime   string `json:"endTime" binding:"required"`   // 结束时间（RFC3339 格式）
+	Duration  int    `json:"duration"`                      // 答题时长（分钟），0=不限时
+	ClassID   *uint  `json:"classId"`                       // 目标班级 ID（空表示公共试卷）
 }
 
-// PaperItemResponse is a paper item with question details.
+// ---- 响应体结构体 ----
+
+// PaperItemResponse 试卷题目项响应
 type PaperItemResponse struct {
-	ID         uint              `json:"id"`
-	PaperID    uint              `json:"paperId"`
-	QuestionID uint              `json:"questionId"`
-	Type       string            `json:"type"`
-	Score      int               `json:"score"`
-	SortNo     int               `json:"sortNo"`
-	Question   *QuestionResponse `json:"question,omitempty"`
+	ID         uint              `json:"id"`         // 题目项 ID
+	PaperID    uint              `json:"paperId"`    // 试卷 ID
+	QuestionID uint              `json:"questionId"` // 题目 ID
+	Type       string            `json:"type"`       // 题型
+	Score      int               `json:"score"`      // 分值
+	SortNo     int               `json:"sortNo"`     // 排序号
+	Question   *QuestionResponse `json:"question,omitempty"` // 题目详情
 }
 
-// PaperResponse is the paper detail response.
+// PaperResponse 试卷响应
 type PaperResponse struct {
-	ID          uint                 `json:"id"`
-	Title       string               `json:"title"`
-	Language    string               `json:"language"`
-	TotalScore  int                  `json:"totalScore"`
-	Status      string               `json:"status"`
-	CreatedBy   uint                 `json:"createdBy"`
-	CreatedAt   string               `json:"createdAt"`
-	UpdatedAt   string               `json:"updatedAt"`
-	Items       []PaperItemResponse  `json:"items,omitempty"`
-	Publication *PublicationResponse `json:"publication,omitempty"`
+	ID          uint                 `json:"id"`          // 试卷 ID
+	Title       string               `json:"title"`       // 标题
+	Language    string               `json:"language"`    // 语言
+	TotalScore  int                  `json:"totalScore"`  // 总分
+	Status      string               `json:"status"`      // 状态
+	CreatedBy   uint                 `json:"createdBy"`   // 创建人 ID
+	CreatedAt   string               `json:"createdAt"`   // 创建时间
+	UpdatedAt   string               `json:"updatedAt"`   // 更新时间
+	Items       []PaperItemResponse  `json:"items,omitempty"`       // 题目项列表
+	Publication *PublicationResponse `json:"publication,omitempty"` // 发布信息
 }
 
+// PublicationResponse 发布信息响应
 type PublicationResponse struct {
-	ID          uint   `json:"id"`
-	PaperID     uint   `json:"paperId"`
-	StartTime   string `json:"startTime"`
-	EndTime     string `json:"endTime"`
-	Duration    int    `json:"duration"` // 答题时长(分钟), 0=不限时
-	IsPublished bool   `json:"isPublished"`
+	ID          uint   `json:"id"`          // 发布记录 ID
+	PaperID     uint   `json:"paperId"`     // 试卷 ID
+	StartTime   string `json:"startTime"`   // 开始时间
+	EndTime     string `json:"endTime"`     // 结束时间
+	Duration    int    `json:"duration"`    // 答题时长（分钟）
+	IsPublished bool   `json:"isPublished"` // 是否已发布
 }
 
-// --- Handlers ---
+// ---- Handler 方法 ----
 
-// Generate handles POST /api/papers/generate
-// Generates a draft paper by randomly selecting questions.
+// Generate 处理智能组卷请求。
+//
+// 流程：
+// 1. 解析请求参数
+// 2. 按题型和数量随机选取题目
+// 3. 计算每题分值
+// 4. 返回题目列表
+//
+// POST /api/papers/generate
 func (h *PaperHandler) Generate(c *gin.Context) {
 	var req generateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -128,7 +171,7 @@ func (h *PaperHandler) Generate(c *gin.Context) {
 		{"coding", req.CodingCount},
 	}
 
-	// Calculate per-question score
+	// 计算总题目数
 	for _, cr := range counts {
 		totalRequested += cr.count
 	}
@@ -136,6 +179,8 @@ func (h *PaperHandler) Generate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "至少需要选择一种题型"})
 		return
 	}
+
+	// 计算每题分值
 	scorePerQuestion := req.TotalScore / totalRequested
 	remainder := req.TotalScore % totalRequested
 
@@ -143,6 +188,8 @@ func (h *PaperHandler) Generate(c *gin.Context) {
 		if cr.count <= 0 {
 			continue
 		}
+
+		// 随机选取题目
 		questions, err := h.paperRepo.RandomQuestions(ctx, cr.qType, req.Language, cr.count)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "查询题目失败", "error": err.Error()})
@@ -156,9 +203,11 @@ func (h *PaperHandler) Generate(c *gin.Context) {
 			})
 			return
 		}
+
 		for i, q := range questions {
 			sortNo++
 			s := scorePerQuestion
+			// 将余数分配给第一题
 			if i == 0 && remainder > 0 {
 				s += remainder
 			}
@@ -182,7 +231,9 @@ func (h *PaperHandler) Generate(c *gin.Context) {
 	})
 }
 
-// Create handles POST /api/papers
+// Create 处理保存试卷请求。
+//
+// POST /api/papers
 func (h *PaperHandler) Create(c *gin.Context) {
 	var req savePaperRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -215,7 +266,9 @@ func (h *PaperHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "保存成功", "data": toPaperResponse(paper)})
 }
 
-// List handles GET /api/papers
+// List 处理试卷列表请求。
+//
+// GET /api/papers?page=1&pageSize=10&keyword=xxx&status=draft
 func (h *PaperHandler) List(c *gin.Context) {
 	page := parseIntWithDefault(c.Query("page"), 1)
 	pageSize := parseIntWithDefault(c.Query("pageSize"), 10)
@@ -225,6 +278,7 @@ func (h *PaperHandler) List(c *gin.Context) {
 		Page:     page,
 		PageSize: pageSize,
 	}
+	// 教师只能看到自己创建的试卷
 	if middleware.GetCurrentUserRole(c) == "teacher" {
 		createdBy := middleware.GetCurrentUserID(c)
 		filters.CreatedBy = &createdBy
@@ -244,7 +298,9 @@ func (h *PaperHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": responses, "total": total})
 }
 
-// Get handles GET /api/papers/:id
+// Get 处理获取试卷详情请求。
+//
+// GET /api/papers/:id
 func (h *PaperHandler) Get(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -262,7 +318,9 @@ func (h *PaperHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
-// Update handles PUT /api/papers/:id
+// Update 处理更新试卷请求。
+//
+// PUT /api/papers/:id
 func (h *PaperHandler) Update(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -301,7 +359,9 @@ func (h *PaperHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "更新成功", "data": toPaperResponseWithItems(*paper, h.questionRepo)})
 }
 
-// Delete handles DELETE /api/papers/:id
+// Delete 处理删除试卷请求。
+//
+// DELETE /api/papers/:id
 func (h *PaperHandler) Delete(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -317,7 +377,9 @@ func (h *PaperHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// ReplaceQuestion handles POST /api/papers/:id/replace-question
+// ReplaceQuestion 处理替换题目请求。
+//
+// POST /api/papers/:id/replace-question
 func (h *PaperHandler) ReplaceQuestion(c *gin.Context) {
 	paperID, err := strconv.Atoi(c.Param("id"))
 	if err != nil || paperID <= 0 {
@@ -333,9 +395,8 @@ func (h *PaperHandler) ReplaceQuestion(c *gin.Context) {
 
 	ctx := context.Background()
 
-	// If no specific question ID provided, randomly pick one of the same type
+	// 如果没有指定新题目 ID，随机选一个同类型的
 	if req.QuestionID == 0 {
-		// Find the item to get its type
 		paper, err := h.paperRepo.FindByID(ctx, uint(paperID))
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"message": "试卷不存在"})
@@ -353,7 +414,6 @@ func (h *PaperHandler) ReplaceQuestion(c *gin.Context) {
 			return
 		}
 
-		// Get all current question IDs in the paper for exclusion
 		existingIDs, _ := h.paperRepo.GetPaperItemIDs(ctx, uint(paperID))
 		newQ, err := h.paperRepo.RandomQuestionByTypeLanguage(ctx, targetType, paper.Language, existingIDs)
 		if err != nil || newQ == nil {
@@ -372,7 +432,9 @@ func (h *PaperHandler) ReplaceQuestion(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "替换成功", "data": toPaperResponseWithItems(*paper, h.questionRepo)})
 }
 
-// DeleteItem handles DELETE /api/papers/:id/items/:itemId
+// DeleteItem 处理删除题目项请求。
+//
+// DELETE /api/papers/:id/items/:itemId
 func (h *PaperHandler) DeleteItem(c *gin.Context) {
 	paperID, err := strconv.Atoi(c.Param("id"))
 	if err != nil || paperID <= 0 {
@@ -387,13 +449,13 @@ func (h *PaperHandler) DeleteItem(c *gin.Context) {
 
 	ctx := context.Background()
 
-	// Get the item to find its score for recalculating total
 	paper, err := h.paperRepo.FindByID(ctx, uint(paperID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "试卷不存在"})
 		return
 	}
 
+	// 找到被删除题目的分值
 	var deletedScore int
 	for _, item := range paper.Items {
 		if item.ID == uint(itemID) {
@@ -407,7 +469,7 @@ func (h *PaperHandler) DeleteItem(c *gin.Context) {
 		return
 	}
 
-	// Recalculate total score
+	// 重新计算总分
 	newTotal := paper.TotalScore - deletedScore
 	_ = h.paperRepo.Update(ctx, uint(paperID), map[string]interface{}{"total_score": newTotal})
 
@@ -415,7 +477,9 @@ func (h *PaperHandler) DeleteItem(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "删除成功", "data": toPaperResponseWithItems(*paper, h.questionRepo)})
 }
 
-// Publish handles POST /api/papers/:id/publish
+// Publish 处理发布试卷请求。
+//
+// POST /api/papers/:id/publish
 func (h *PaperHandler) Publish(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -429,6 +493,7 @@ func (h *PaperHandler) Publish(c *gin.Context) {
 		return
 	}
 
+	// 解析时间
 	startTime, err := time.Parse(time.RFC3339, req.StartTime)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "开始时间格式错误", "error": err.Error()})
@@ -448,6 +513,8 @@ func (h *PaperHandler) Publish(c *gin.Context) {
 	ctx := context.Background()
 	currentRole := middleware.GetCurrentUserRole(c)
 	currentID := middleware.GetCurrentUserID(c)
+
+	// 权限校验：教师只能发布到自己管理的班级
 	if req.ClassID != nil {
 		if h.classRepo == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "班级仓储未初始化"})
@@ -466,6 +533,7 @@ func (h *PaperHandler) Publish(c *gin.Context) {
 		}
 	}
 
+	// 创建发布记录
 	pub := models.PaperPublication{
 		PaperID:     uint(id),
 		ClassID:     req.ClassID,
@@ -479,7 +547,7 @@ func (h *PaperHandler) Publish(c *gin.Context) {
 		return
 	}
 
-	// Update paper status to published
+	// 更新试卷状态为 published
 	if err := h.paperRepo.Update(ctx, uint(id), map[string]interface{}{"status": "published"}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "更新状态失败", "error": err.Error()})
 		return
@@ -488,7 +556,9 @@ func (h *PaperHandler) Publish(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "发布成功"})
 }
 
-// Unpublish handles POST /api/papers/:id/unpublish
+// Unpublish 处理取消发布请求。
+//
+// POST /api/papers/:id/unpublish
 func (h *PaperHandler) Unpublish(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -498,7 +568,6 @@ func (h *PaperHandler) Unpublish(c *gin.Context) {
 
 	ctx := context.Background()
 
-	// Find and update the publication
 	pub, err := h.paperRepo.FindPublicationByPaperID(ctx, uint(id))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "未找到发布记录"})
@@ -510,7 +579,7 @@ func (h *PaperHandler) Unpublish(c *gin.Context) {
 		return
 	}
 
-	// Update paper status back to draft
+	// 更新试卷状态为 draft
 	if err := h.paperRepo.Update(ctx, uint(id), map[string]interface{}{"status": "draft"}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "更新状态失败", "error": err.Error()})
 		return
@@ -519,7 +588,9 @@ func (h *PaperHandler) Unpublish(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "取消发布成功"})
 }
 
-// GetSubmissions handles GET /api/papers/:id/submissions
+// GetSubmissions 处理查看提交统计请求。
+//
+// GET /api/papers/:id/submissions?classId=1
 func (h *PaperHandler) GetSubmissions(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -547,10 +618,11 @@ func (h *PaperHandler) GetSubmissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": stats})
 }
 
-// --- Helper functions ---
+// ---- 辅助函数 ----
 
+// toPaperResponse 将 Paper 模型转换为响应结构体（不含题目详情）。
 func toPaperResponse(p models.Paper) PaperResponse {
-	resp := PaperResponse{
+	return PaperResponse{
 		ID:         p.ID,
 		Title:      p.Title,
 		Language:   p.Language,
@@ -560,9 +632,9 @@ func toPaperResponse(p models.Paper) PaperResponse {
 		CreatedAt:  p.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:  p.UpdatedAt.Format(time.RFC3339),
 	}
-	return resp
 }
 
+// toPaperResponseWithItems 将 Paper 模型转换为响应结构体（含题目详情）。
 func toPaperResponseWithItems(p models.Paper, questionRepo *repositories.QuestionRepository) PaperResponse {
 	resp := toPaperResponse(p)
 
@@ -576,7 +648,7 @@ func toPaperResponseWithItems(p models.Paper, questionRepo *repositories.Questio
 			Score:      item.Score,
 			SortNo:     item.SortNo,
 		}
-		// Try to load question details
+		// 查询题目详情
 		q, err := questionRepo.FindByID(context.Background(), item.QuestionID)
 		if err == nil {
 			qResp, _ := toQuestionResponse(*q, "")

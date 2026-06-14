@@ -1,3 +1,26 @@
+// ============================================================================
+// handlers/exam_handler.go - 考试接口处理器
+// ============================================================================
+//
+// 本文件实现了学生考试相关的 HTTP 接口，包括：
+// - ListPublished:  可参加的考试列表
+// - StartAttempt:   开始答题
+// - GetAttempt:     获取答题详情
+// - SaveAnswers:    保存答案（自动保存）
+// - SubmitAttempt:  交卷
+// - GetResult:      查看考试结果
+// - RecordEvent:    记录监考事件
+//
+// 答题流程：
+//   查看考试列表 → 开始答题 → 自动保存答案 → 交卷 → 查看结果
+//
+// 学习要点：
+// - 考试时间窗口的验证
+// - 自动保存的实现
+// - 自动阅卷的实现
+// - 截止时间的计算
+// ============================================================================
+
 package handlers
 
 import (
@@ -14,7 +37,7 @@ import (
 	"week05/homework/server/repositories"
 )
 
-// ExamHandler exposes endpoints for the student exam experience.
+// ExamHandler 处理考试相关的 HTTP 请求。
 type ExamHandler struct {
 	examRepo     *repositories.ExamRepository
 	paperRepo    *repositories.PaperRepository
@@ -22,72 +45,77 @@ type ExamHandler struct {
 	classRepo    *repositories.ClassRepository
 }
 
+// NewExamHandler 创建一个新的 ExamHandler 实例。
 func NewExamHandler(examRepo *repositories.ExamRepository, paperRepo *repositories.PaperRepository, questionRepo *repositories.QuestionRepository, classRepo *repositories.ClassRepository) *ExamHandler {
 	return &ExamHandler{examRepo: examRepo, paperRepo: paperRepo, questionRepo: questionRepo, classRepo: classRepo}
 }
 
-// --- Request/Response structs ---
+// ---- 请求体结构体 ----
 
+// saveAnswersRequest 保存答案请求体
 type saveAnswersRequest struct {
-	Answers []answerInput `json:"answers" binding:"required,min=1"`
+	Answers []answerInput `json:"answers" binding:"required,min=1"` // 答案列表
 }
 
+// answerInput 单个答案
 type answerInput struct {
-	QuestionID uint   `json:"questionId" binding:"required"`
-	AnswerJSON string `json:"answerJson"`
+	QuestionID uint   `json:"questionId" binding:"required"` // 题目 ID
+	AnswerJSON string `json:"answerJson"`                     // 答案（JSON 字符串）
 }
 
+// proctorEventRequest 监考事件请求体
 type proctorEventRequest struct {
-	EventType   string `json:"eventType" binding:"required"`
-	PayloadJSON string `json:"payloadJson"`
+	EventType   string `json:"eventType" binding:"required"` // 事件类型
+	PayloadJSON string `json:"payloadJson"`                   // 事件数据
 }
 
-// ExamAttemptResponse is the response for an exam attempt.
+// ---- 响应体结构体 ----
+
+// ExamAttemptResponse 答题记录响应
 type ExamAttemptResponse struct {
-	ID          uint                 `json:"id"`
-	PaperID     uint                 `json:"paperId"`
-	StudentID   uint                 `json:"studentId"`
-	StartedAt   string               `json:"startedAt"`
-	SubmittedAt *string              `json:"submittedAt"`
-	Status      string               `json:"status"`
-	TotalScore  *int                 `json:"totalScore"`
-	Deadline    *string              `json:"deadline,omitempty"` // 答题截止时间(含答题时长)
-	Paper       *PaperResponse       `json:"paper,omitempty"`
-	Answers     []ExamAnswerResponse `json:"answers,omitempty"`
+	ID          uint                 `json:"id"`                    // 答题记录 ID
+	PaperID     uint                 `json:"paperId"`               // 试卷 ID
+	StudentID   uint                 `json:"studentId"`             // 学生 ID
+	StartedAt   string               `json:"startedAt"`             // 开始时间
+	SubmittedAt *string              `json:"submittedAt"`           // 交卷时间
+	Status      string               `json:"status"`                // 状态
+	TotalScore  *int                 `json:"totalScore"`            // 总分
+	Deadline    *string              `json:"deadline,omitempty"`    // 截止时间
+	Paper       *PaperResponse       `json:"paper,omitempty"`       // 试卷详情
+	Answers     []ExamAnswerResponse `json:"answers,omitempty"`     // 答案列表
 }
 
+// ExamAnswerResponse 答案响应
 type ExamAnswerResponse struct {
-	ID         uint   `json:"id"`
-	AttemptID  uint   `json:"attemptId"`
-	QuestionID uint   `json:"questionId"`
-	AnswerJSON string `json:"answerJson"`
-	IsCorrect  *bool  `json:"isCorrect"`
-	Score      *int   `json:"score"`
+	ID         uint   `json:"id"`         // 答案 ID
+	AttemptID  uint   `json:"attemptId"`  // 答题记录 ID
+	QuestionID uint   `json:"questionId"` // 题目 ID
+	AnswerJSON string `json:"answerJson"` // 答案
+	IsCorrect  *bool  `json:"isCorrect"`  // 是否正确
+	Score      *int   `json:"score"`      // 得分
 }
 
-// PublishedPaperResponse is for the student-facing published paper list.
+// PublishedPaperResponse 已发布试卷响应（学生视角）
 type PublishedPaperResponse struct {
-	PaperID    uint   `json:"paperId"`
-	Title      string `json:"title"`
-	Language   string `json:"language"`
-	TotalScore int    `json:"totalScore"`
-	StartTime  string `json:"startTime"`
-	EndTime    string `json:"endTime"`
-	Duration   int    `json:"duration"` // 答题时长(分钟), 0=不限时
+	PaperID    uint   `json:"paperId"`    // 试卷 ID
+	Title      string `json:"title"`      // 标题
+	Language   string `json:"language"`   // 语言
+	TotalScore int    `json:"totalScore"` // 总分
+	StartTime  string `json:"startTime"`  // 开始时间
+	EndTime    string `json:"endTime"`    // 结束时间
+	Duration   int    `json:"duration"`   // 答题时长（分钟）
 }
 
-// --- Handlers ---
+// ---- Handler 方法 ----
 
-// ptrUintToSlice converts an optional *uint class ID into the []uint form expected by repositories.
-// A nil pointer means "no class" (public papers only); a non-nil value means the student belongs to that class.
-func ptrUintToSlice(id *uint) []uint {
-	if id == nil {
-		return nil
-	}
-	return []uint{*id}
-}
-
-// ListPublished handles GET /api/exam/published
+// ListPublished 处理获取可参加考试列表请求。
+//
+// 查询逻辑：
+// 1. 获取学生所属的所有班级 ID
+// 2. 查询已发布且在时间窗口内的试卷
+// 3. 筛选条件：公共试卷 或 学生所在班级的试卷
+//
+// GET /api/exam/published
 func (h *ExamHandler) ListPublished(c *gin.Context) {
 	var classIDs []uint
 	if user, ok := middleware.GetCurrentUser(c); ok {
@@ -123,7 +151,16 @@ func (h *ExamHandler) ListPublished(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": responses})
 }
 
-// StartAttempt handles POST /api/exam/papers/:id/start
+// StartAttempt 处理开始答题请求。
+//
+// 流程：
+// 1. 验证试卷已发布且在时间窗口内
+// 2. 检查是否已有进行中的答题
+// 3. 检查是否已提交过
+// 4. 创建答题记录
+// 5. 计算截止时间
+//
+// POST /api/exam/papers/:id/start
 func (h *ExamHandler) StartAttempt(c *gin.Context) {
 	paperID, err := strconv.Atoi(c.Param("id"))
 	if err != nil || paperID <= 0 {
@@ -135,7 +172,7 @@ func (h *ExamHandler) StartAttempt(c *gin.Context) {
 	currentUser, _ := middleware.GetCurrentUser(c)
 	ctx := context.Background()
 
-	// Get all class IDs the student belongs to
+	// 获取学生所属班级
 	var classIDs []uint
 	if currentUser != nil {
 		ids, err := h.classRepo.ListClassIDsByStudent(ctx, currentUser.ID)
@@ -144,7 +181,7 @@ func (h *ExamHandler) StartAttempt(c *gin.Context) {
 		}
 	}
 
-	// Check if paper is published and within time window
+	// 验证试卷发布状态和时间窗口
 	pub, err := h.examRepo.FindPublicationByPaperIDForExam(ctx, uint(paperID), classIDs)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"message": "试卷未发布或不在考试时间"})
@@ -156,20 +193,21 @@ func (h *ExamHandler) StartAttempt(c *gin.Context) {
 		return
 	}
 
-	// Check for existing in-progress attempt
+	// 检查是否有进行中的答题
 	existing, err := h.examRepo.FindActiveAttempt(ctx, studentID, uint(paperID))
 	if err == nil && existing != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "已有进行中的答题", "data": toAttemptResponse(*existing, nil, nil)})
 		return
 	}
 
-	// Check for already submitted attempt
+	// 检查是否已提交过
 	submitted, _ := h.examRepo.FindAttemptByStudentAndPaper(ctx, studentID, uint(paperID))
 	if submitted != nil && submitted.Status != "in_progress" {
 		c.JSON(http.StatusForbidden, gin.H{"message": "已提交过答卷，不能重复答题"})
 		return
 	}
 
+	// 创建答题记录
 	attempt := models.ExamAttempt{
 		PaperID:   uint(paperID),
 		StudentID: studentID,
@@ -182,7 +220,7 @@ func (h *ExamHandler) StartAttempt(c *gin.Context) {
 		return
 	}
 
-	// Calculate deadline: min(startedAt + duration, endTime)
+	// 计算截止时间
 	resp := toAttemptResponse(attempt, nil, nil)
 	deadline := calcDeadline(attempt.StartedAt, pub)
 	if deadline != nil {
@@ -193,7 +231,9 @@ func (h *ExamHandler) StartAttempt(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "开始答题", "data": resp})
 }
 
-// GetAttempt handles GET /api/exam/attempts/:id
+// GetAttempt 处理获取答题详情请求。
+//
+// GET /api/exam/attempts/:id
 func (h *ExamHandler) GetAttempt(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -224,7 +264,8 @@ func (h *ExamHandler) GetAttempt(c *gin.Context) {
 	}
 
 	resp := toAttemptResponse(*attempt, paperResp, answerResps)
-	// Add deadline for in-progress attempts
+
+	// 为进行中的答题添加截止时间
 	if attempt.Status == "in_progress" {
 		var classID *uint
 		if user, ok := middleware.GetCurrentUser(c); ok {
@@ -243,7 +284,9 @@ func (h *ExamHandler) GetAttempt(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
-// SaveAnswers handles PUT /api/exam/attempts/:id/answers
+// SaveAnswers 处理保存答案请求（自动保存）。
+//
+// PUT /api/exam/attempts/:id/answers
 func (h *ExamHandler) SaveAnswers(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -274,7 +317,7 @@ func (h *ExamHandler) SaveAnswers(c *gin.Context) {
 		return
 	}
 
-	// Check deadline (considers both exam time window and answer duration)
+	// 检查截止时间
 	var classID *uint
 	if user, ok := middleware.GetCurrentUser(c); ok {
 		classID = user.ClassID
@@ -283,7 +326,7 @@ func (h *ExamHandler) SaveAnswers(c *gin.Context) {
 	if pubErr == nil {
 		deadline := calcDeadline(attempt.StartedAt, pub)
 		if deadline != nil && time.Now().After(*deadline) {
-			// Auto-submit on timeout
+			// 超时自动提交
 			attempt.Status = "timeout"
 			_ = h.autoSubmit(ctx, attempt)
 			c.JSON(http.StatusForbidden, gin.H{"message": "答题时间已结束"})
@@ -291,6 +334,7 @@ func (h *ExamHandler) SaveAnswers(c *gin.Context) {
 		}
 	}
 
+	// 保存答案（Upsert 操作）
 	for _, ans := range req.Answers {
 		answer := models.ExamAnswer{
 			AttemptID:  uint(id),
@@ -306,7 +350,9 @@ func (h *ExamHandler) SaveAnswers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "保存成功"})
 }
 
-// SubmitAttempt handles POST /api/exam/attempts/:id/submit
+// SubmitAttempt 处理交卷请求。
+//
+// POST /api/exam/attempts/:id/submit
 func (h *ExamHandler) SubmitAttempt(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -339,7 +385,9 @@ func (h *ExamHandler) SubmitAttempt(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "交卷成功"})
 }
 
-// GetResult handles GET /api/exam/attempts/:id/result
+// GetResult 处理查看考试结果请求。
+//
+// GET /api/exam/attempts/:id/result
 func (h *ExamHandler) GetResult(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -359,7 +407,7 @@ func (h *ExamHandler) GetResult(c *gin.Context) {
 		return
 	}
 
-	// Only show result if submitted or timeout
+	// 只有已交卷才能查看结果
 	if attempt.Status == "in_progress" {
 		c.JSON(http.StatusForbidden, gin.H{"message": "尚未交卷，无法查看结果"})
 		return
@@ -380,7 +428,9 @@ func (h *ExamHandler) GetResult(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toAttemptResponse(*attempt, paperResp, answerResps)})
 }
 
-// RecordEvent handles POST /api/exam/attempts/:id/events
+// RecordEvent 处理记录监考事件请求。
+//
+// POST /api/exam/attempts/:id/events
 func (h *ExamHandler) RecordEvent(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
@@ -419,8 +469,15 @@ func (h *ExamHandler) RecordEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "记录成功"})
 }
 
-// --- Helper functions ---
+// ---- 辅助函数 ----
 
+// autoSubmit 自动提交并阅卷。
+//
+// 阅卷逻辑：
+// 1. 遍历试卷的每个题目
+// 2. 获取学生的答案
+// 3. 对比正确答案
+// 4. 计算总分
 func (h *ExamHandler) autoSubmit(ctx context.Context, attempt *models.ExamAttempt) error {
 	now := time.Now()
 	updates := map[string]interface{}{
@@ -428,12 +485,13 @@ func (h *ExamHandler) autoSubmit(ctx context.Context, attempt *models.ExamAttemp
 		"status":       "submitted",
 	}
 
-	// Grade the attempt
+	// 获取试卷信息
 	paper, err := h.paperRepo.FindByID(ctx, attempt.PaperID)
 	if err != nil {
 		return h.examRepo.UpdateAttempt(ctx, attempt.ID, updates)
 	}
 
+	// 阅卷
 	totalScore := 0
 	for _, item := range paper.Items {
 		answer, err := h.examRepo.FindAnswer(ctx, attempt.ID, item.QuestionID)
@@ -444,7 +502,6 @@ func (h *ExamHandler) autoSubmit(ctx context.Context, attempt *models.ExamAttemp
 		isCorrect := false
 		score := 0
 
-		// Grade the answer
 		q, qErr := h.questionRepo.FindByID(ctx, item.QuestionID)
 		if qErr == nil {
 			isCorrect, score = gradeAnswer(q, answer, item.Score)
@@ -463,44 +520,49 @@ func (h *ExamHandler) autoSubmit(ctx context.Context, attempt *models.ExamAttemp
 	return h.examRepo.UpdateAttempt(ctx, attempt.ID, updates)
 }
 
-// calcDeadline returns the answer deadline for an attempt.
-// deadline = min(startedAt + duration, endTime); nil if no limit.
+// calcDeadline 计算答题截止时间。
+//
+// 公式：deadline = min(开始答题时间 + Duration, EndTime)
+// 如果 Duration 为 0（不限时），则截止时间为 EndTime。
 func calcDeadline(startedAt time.Time, pub *models.PaperPublication) *time.Time {
 	if pub.Duration <= 0 {
-		// No duration limit, deadline is the exam end time
 		return &pub.EndTime
 	}
 	durationDeadline := startedAt.Add(time.Duration(pub.Duration) * time.Minute)
-	// If duration extends beyond exam end time, use exam end time
 	if durationDeadline.After(pub.EndTime) {
 		return &pub.EndTime
 	}
 	return &durationDeadline
 }
 
+// gradeAnswer 阅卷：对比学生答案和正确答案。
+//
+// 阅卷规则：
+// - 答案为空：0 分
+// - 答案格式错误：0 分
+// - 答案长度不一致：0 分
+// - 答案内容不一致：0 分
+// - 完全一致：满分
 func gradeAnswer(question *models.Question, answer *models.ExamAnswer, maxScore int) (bool, int) {
 	if answer.AnswerJSON == "" {
 		return false, 0
 	}
 
-	// Parse the student's answer
 	var studentAnswers []int
 	if err := json.Unmarshal([]byte(answer.AnswerJSON), &studentAnswers); err != nil {
 		return false, 0
 	}
 
-	// Parse the correct answer
 	var correctAnswers []int
 	if err := json.Unmarshal([]byte(question.AnswerJSON), &correctAnswers); err != nil {
 		return false, 0
 	}
 
-	// Compare
 	if len(studentAnswers) != len(correctAnswers) {
 		return false, 0
 	}
 
-	// Sort both for comparison
+	// 排序后比较
 	sortInts(studentAnswers)
 	sortInts(correctAnswers)
 
@@ -513,6 +575,10 @@ func gradeAnswer(question *models.Question, answer *models.ExamAnswer, maxScore 
 	return true, maxScore
 }
 
+// sortInts 对整数切片进行冒泡排序。
+//
+// 注意：这是一个简单的冒泡排序实现，仅用于教学目的。
+// 生产环境应该使用标准库的 sort.Ints()。
 func sortInts(arr []int) {
 	for i := 0; i < len(arr)-1; i++ {
 		for j := i + 1; j < len(arr); j++ {
@@ -523,6 +589,7 @@ func sortInts(arr []int) {
 	}
 }
 
+// toAttemptResponse 将 ExamAttempt 模型转换为响应结构体。
 func toAttemptResponse(a models.ExamAttempt, paper *PaperResponse, answers []ExamAnswerResponse) ExamAttemptResponse {
 	resp := ExamAttemptResponse{
 		ID:         a.ID,
@@ -541,6 +608,7 @@ func toAttemptResponse(a models.ExamAttempt, paper *PaperResponse, answers []Exa
 	return resp
 }
 
+// toAnswerResponse 将 ExamAnswer 模型转换为响应结构体。
 func toAnswerResponse(a models.ExamAnswer) ExamAnswerResponse {
 	return ExamAnswerResponse{
 		ID:         a.ID,
@@ -551,10 +619,22 @@ func toAnswerResponse(a models.ExamAnswer) ExamAnswerResponse {
 		Score:      a.Score,
 	}
 }
+
+// canAccessAttempt 检查当前用户是否有权访问答题记录。
+// 管理员可以访问所有记录，学生只能访问自己的记录。
 func canAccessAttempt(c *gin.Context, studentID uint) bool {
 	role := middleware.GetCurrentUserRole(c)
 	if role == "admin" {
 		return true
 	}
 	return middleware.GetCurrentUserID(c) == studentID
+}
+
+// ptrUintToSlice 将 *uint 转换为 []uint。
+// nil 转换为 nil，非 nil 转换为包含单个元素的切片。
+func ptrUintToSlice(id *uint) []uint {
+	if id == nil {
+		return nil
+	}
+	return []uint{*id}
 }

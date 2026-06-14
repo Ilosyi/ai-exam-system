@@ -1,3 +1,27 @@
+// ============================================================================
+// handlers/test_helpers.go - 测试辅助工具
+// ============================================================================
+//
+// 本文件提供了用于单元测试的辅助工具，包括：
+// - TestContext: 测试上下文，包含所有依赖对象
+// - SetupTestContext: 初始化测试环境（内存数据库、默认用户）
+// - MakeRequest: 创建 HTTP 请求并获取响应
+// - GetTokenForUser: 为用户生成 JWT 令牌
+// - ParseResponse: 解析 JSON 响应
+// - CreateTestQuestion: 创建测试题目
+// - CreateTestClass: 创建测试班级
+//
+// 为什么需要测试辅助工具？
+// - 避免在每个测试中重复初始化代码
+// - 提供统一的测试环境
+// - 简化测试用例的编写
+//
+// 学习要点：
+// - Go 的 testing 包
+// - 内存数据库的使用
+// - httptest 的使用
+// ============================================================================
+
 package handlers
 
 import (
@@ -19,7 +43,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestContext holds all dependencies for handler tests
+// TestContext 持有测试所需的所有依赖对象。
 type TestContext struct {
 	DB              *gorm.DB
 	UserRepo        *repositories.UserRepository
@@ -35,15 +59,15 @@ type TestContext struct {
 	ClassHandler    *ClassHandler
 }
 
-// SetupTestContext initializes test dependencies
+// SetupTestContext 初始化测试环境。
+//
+// 创建内存数据库、迁移表结构、初始化所有依赖、创建默认用户。
 func SetupTestContext(t *testing.T) *TestContext {
-	// 创建内存数据库
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to create test DB: %v", err)
 	}
 
-	// 迁移所有模型
 	err = db.AutoMigrate(
 		&models.User{},
 		&models.Question{},
@@ -60,41 +84,22 @@ func SetupTestContext(t *testing.T) *TestContext {
 		t.Fatalf("Failed to migrate: %v", err)
 	}
 
-	// 初始化所有存储库
 	userRepo := repositories.NewUserRepository(db)
 	questionRepo := repositories.NewQuestionRepository(db)
 	paperRepo := repositories.NewPaperRepository(db)
 	examRepo := repositories.NewExamRepository(db)
 	classRepo := repositories.NewClassRepository(db)
 
-	// 初始化服务
 	authService := services.NewAuthService("test-secret", 24*time.Hour)
 
-	// 创建默认用户
 	adminHash, _ := authService.HashPassword("admin123")
 	studentHash, _ := authService.HashPassword("student123")
 	teacherHash, _ := authService.HashPassword("teacher123")
 
-	db.Create(&models.User{
-		Username:     "admin",
-		Role:         "admin",
-		PasswordHash: adminHash,
-		Status:       "active",
-	})
-	db.Create(&models.User{
-		Username:     "student",
-		Role:         "student",
-		PasswordHash: studentHash,
-		Status:       "active",
-	})
-	db.Create(&models.User{
-		Username:     "teacher",
-		Role:         "teacher",
-		PasswordHash: teacherHash,
-		Status:       "active",
-	})
+	db.Create(&models.User{Username: "admin", Role: "admin", PasswordHash: adminHash, Status: "active"})
+	db.Create(&models.User{Username: "student", Role: "student", PasswordHash: studentHash, Status: "active"})
+	db.Create(&models.User{Username: "teacher", Role: "teacher", PasswordHash: teacherHash, Status: "active"})
 
-	// 初始化 handlers
 	return &TestContext{
 		DB:              db,
 		UserRepo:        userRepo,
@@ -111,7 +116,7 @@ func SetupTestContext(t *testing.T) *TestContext {
 	}
 }
 
-// MakeRequest 创建一个 HTTP 请求并获取响应
+// MakeRequest 创建 HTTP 请求并获取响应。
 func MakeRequest(t *testing.T, method string, path string, body interface{}, handler gin.HandlerFunc, token *string) *httptest.ResponseRecorder {
 	var req *http.Request
 	var err error
@@ -133,17 +138,14 @@ func MakeRequest(t *testing.T, method string, path string, body interface{}, han
 	}
 
 	w := httptest.NewRecorder()
-
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
-
-	// 调用 handler
 	handler(c)
 
 	return w
 }
 
-// GetTokenForUser 为用户获取 token
+// GetTokenForUser 为指定用户生成 JWT 令牌。
 func (tc *TestContext) GetTokenForUser(t *testing.T, username string) string {
 	var user models.User
 	tc.DB.Where("username = ?", username).First(&user)
@@ -159,7 +161,7 @@ func (tc *TestContext) GetTokenForUser(t *testing.T, username string) string {
 	return token
 }
 
-// ParseResponse 解析 JSON 响应
+// ParseResponse 解析 JSON 响应。
 func ParseResponse(t *testing.T, w *httptest.ResponseRecorder, v interface{}) {
 	err := json.Unmarshal(w.Body.Bytes(), v)
 	if err != nil {
@@ -167,7 +169,7 @@ func ParseResponse(t *testing.T, w *httptest.ResponseRecorder, v interface{}) {
 	}
 }
 
-// CreateTestQuestion 创建一个测试题目
+// CreateTestQuestion 创建一个测试题目。
 func (tc *TestContext) CreateTestQuestion(t *testing.T, title string, qType string) *models.Question {
 	q := &models.Question{
 		Title:    title,
@@ -181,7 +183,7 @@ func (tc *TestContext) CreateTestQuestion(t *testing.T, title string, qType stri
 	return q
 }
 
-// CreateTestClass 创建一个测试班级
+// CreateTestClass 创建一个测试班级。
 func (tc *TestContext) CreateTestClass(t *testing.T, teacherID uint, name string) *models.Class {
 	c := &models.Class{
 		Name:      name,

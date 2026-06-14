@@ -1,8 +1,34 @@
+// ============================================================================
+// models/class.go - 班级数据模型
+// ============================================================================
+//
+// 定义了班级的数据结构，对应数据库中的 classes 表。
+//
+// 班级体系说明：
+// - 每个班级有一个教师（TeacherID）
+// - 学生可以通过 user_classes 表加入多个班级
+// - 教师只能管理自己创建的班级
+// - 管理员可以管理所有班级
+//
+// 班级与试卷的关系：
+// - 发布试卷时可以指定目标班级
+// - 学生只能看到自己所在班级的已发布试卷
+//
+// 学习要点：
+// - 简单的外键关系设计
+// - 教师-班级的一对多关系
+// ============================================================================
+
 package models
 
-// Class represents a class of students (reserved for future).
+// Class 代表一个班级。
+//
+// 字段说明：
+// - ID:        班级唯一标识（自增主键）
+// - Name:      班级名称
+// - TeacherID: 班级所属教师的用户 ID（外键，关联 users 表）
 type Class struct {
-	ID        uint   `json:"id" gorm:"primaryKey"`
-	Name      string `json:"name" gorm:"not null"`
-	TeacherID uint   `json:"teacherId" gorm:"column:teacher_id;not null"`
+	ID        uint   `json:"id" gorm:"primaryKey"`                // 班级 ID（主键）
+	Name      string `json:"name" gorm:"not null"`                // 班级名称
+	TeacherID uint   `json:"teacherId" gorm:"column:teacher_id;not null"` // 教师 ID（外键）
 }
