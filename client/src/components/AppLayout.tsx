@@ -1,5 +1,5 @@
 import { Layout, Menu, theme } from "antd";
-import { ReadOutlined, DatabaseOutlined, FileTextOutlined, FormOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
+import { ReadOutlined, DatabaseOutlined, FileTextOutlined, FolderOpenOutlined, FormOutlined, TeamOutlined, UserOutlined } from "@ant-design/icons";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Button, Form, Input, Modal, Space, Tag, Typography, message } from "antd";
@@ -9,6 +9,7 @@ import { changePassword } from "../api/auth";
 function buildMenuItems(role?: "admin" | "teacher" | "student") {
   const base = [
     { key: "/notes", label: <Link to="/notes">学习心得</Link>, icon: <ReadOutlined /> },
+    { key: "/documents", label: <Link to="/documents">文档管理</Link>, icon: <FolderOpenOutlined /> },
     { key: "/questions", label: <Link to="/questions">题库管理</Link>, icon: <DatabaseOutlined /> },
     { key: "/papers/generate", label: <Link to="/papers/generate">智能组卷</Link>, icon: <FormOutlined /> },
     { key: "/papers", label: <Link to="/papers">试卷管理</Link>, icon: <FileTextOutlined /> },
@@ -22,6 +23,7 @@ function buildMenuItems(role?: "admin" | "teacher" | "student") {
 
 function getSelectedKey(pathname: string): string {
   if (pathname.startsWith("/notes")) return "/notes";
+  if (pathname.startsWith("/documents")) return "/documents";
   if (pathname.startsWith("/questions")) return "/questions";
   if (pathname.startsWith("/papers/generate")) return "/papers/generate";
   if (pathname.startsWith("/classes")) return "/classes";

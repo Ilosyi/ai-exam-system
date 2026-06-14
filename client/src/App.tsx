@@ -3,6 +3,7 @@ import { Spin } from "antd";
 import { AppLayout } from "./components/AppLayout";
 import { QuestionPage } from "./pages/QuestionPage";
 import { NotesPage } from "./pages/NotesPage";
+import { DocumentManagePage } from "./pages/DocumentManagePage";
 import { PaperGeneratePage } from "./pages/PaperGeneratePage";
 import { PaperManagePage } from "./pages/PaperManagePage";
 import { PaperEditPage } from "./pages/PaperEditPage";
@@ -98,6 +99,7 @@ export default function App() {
           >
             <Route path="/questions" element={<QuestionPage />} />
             <Route path="/notes" element={<NotesPage />} />
+            <Route path="/documents" element={<DocumentManagePage />} />
             <Route path="/papers" element={<PaperManagePage />} />
             <Route path="/papers/generate" element={<PaperGeneratePage />} />
             <Route path="/papers/:id/edit" element={<PaperEditPage />} />
