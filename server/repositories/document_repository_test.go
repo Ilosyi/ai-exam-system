@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -79,5 +80,59 @@ func TestDocumentRepository_DeleteCourseRemovesDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "backend-go")); !os.IsNotExist(err) {
 		t.Fatalf("expected directory to be removed, stat err=%v", err)
+	}
+}
+
+func TestDocumentRepository_DeleteDocumentRemovesCourseIndex(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := NewDocumentRepository(root)
+
+	if err := repo.SaveCourse(ctx, CourseDocument{ID: "backend-go", Title: "服务端训练营"}); err != nil {
+		t.Fatalf("SaveCourse failed: %v", err)
+	}
+	if err := repo.SaveDocument(ctx, "backend-go", DocumentMeta{ID: "day01-gin", Title: "DAY01", Order: 1}, "hello"); err != nil {
+		t.Fatalf("SaveDocument failed: %v", err)
+	}
+	if err := repo.DeleteDocument(ctx, "backend-go", "day01-gin"); err != nil {
+		t.Fatalf("DeleteDocument failed: %v", err)
+	}
+
+	course, err := repo.GetCourse(ctx, "backend-go")
+	if err != nil {
+		t.Fatalf("GetCourse failed: %v", err)
+	}
+	if len(course.Documents) != 0 {
+		t.Fatalf("expected document index to be empty, got %#v", course.Documents)
+	}
+}
+
+func TestWriteFileAtomicallyReplacesFileAndCleansTemp(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "course.json")
+
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
+		t.Fatalf("seed target failed: %v", err)
+	}
+	if err := writeFileAtomically(target, []byte("new"), 0o644); err != nil {
+		t.Fatalf("writeFileAtomically failed: %v", err)
+	}
+
+	content, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if string(content) != "new" {
+		t.Fatalf("expected replaced content, got %q", content)
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp-") {
+			t.Fatalf("expected temp files to be cleaned, found %s", entry.Name())
+		}
 	}
 }

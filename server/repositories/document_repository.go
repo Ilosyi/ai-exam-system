@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 var (
@@ -213,12 +214,23 @@ func (r *DocumentRepository) SaveDocument(ctx context.Context, courseID string, 
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(docPath, []byte(markdown), 0o644); err != nil {
+	tmpPath, err := writeTempFileForAtomicReplace(docPath, []byte(markdown), 0o644)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpPath)
+
+	originalCourse := course
+	upsertDocument(&course, doc)
+	if err := r.writeCourse(ctx, course); err != nil {
 		return err
 	}
 
-	upsertDocument(&course, doc)
-	return r.writeCourse(ctx, course)
+	if err := os.Rename(tmpPath, docPath); err != nil {
+		_ = r.writeCourse(ctx, originalCourse)
+		return err
+	}
+	return nil
 }
 
 func (r *DocumentRepository) DeleteDocument(ctx context.Context, courseID, docID string) error {
@@ -251,6 +263,10 @@ func (r *DocumentRepository) DeleteDocument(ctx context.Context, courseID, docID
 	}
 	course.Documents = documents
 
+	if err := r.writeCourse(ctx, course); err != nil {
+		return err
+	}
+
 	docPath, err := r.documentPath(courseID, docID)
 	if err != nil {
 		return err
@@ -259,7 +275,7 @@ func (r *DocumentRepository) DeleteDocument(ctx context.Context, courseID, docID
 		return err
 	}
 
-	return r.writeCourse(ctx, course)
+	return nil
 }
 
 func (r *DocumentRepository) writeCourse(ctx context.Context, course CourseDocument) error {
@@ -294,7 +310,7 @@ func (r *DocumentRepository) writeCourse(ctx context.Context, course CourseDocum
 	}
 	data = append(data, '\n')
 
-	return os.WriteFile(coursePath, data, 0o644)
+	return writeFileAtomically(coursePath, data, 0o644)
 }
 
 func (r *DocumentRepository) documentPath(courseID, docID string) (string, error) {
@@ -340,6 +356,48 @@ func readCourseFile(path string) (CourseDocument, error) {
 	return course, nil
 }
 
+func writeFileAtomically(path string, data []byte, perm os.FileMode) error {
+	tmpPath, err := writeTempFileForAtomicReplace(path, data, perm)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpPath)
+
+	return os.Rename(tmpPath, path)
+}
+
+func writeTempFileForAtomicReplace(path string, data []byte, perm os.FileMode) (string, error) {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+
+	file, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := file.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return "", err
+	}
+	if err := file.Chmod(perm); err != nil {
+		_ = file.Close()
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+
+	cleanup = false
+	return tmpPath, nil
+}
+
 func findDocument(documents []DocumentMeta, docID string) (DocumentMeta, bool) {
 	for _, doc := range documents {
 		if doc.ID == docID {
@@ -381,5 +439,5 @@ func sortDocuments(documents []DocumentMeta) {
 }
 
 func startsWithParent(path string) bool {
-	return len(path) > 3 && path[:3] == ".."+string(filepath.Separator)
+	return strings.HasPrefix(path, ".."+string(filepath.Separator))
 }
