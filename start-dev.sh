@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER_DIR="$ROOT_DIR/server"
 CLIENT_DIR="$ROOT_DIR/client"
+SERVER_PORT="$(sed -nE 's/.*"serverPort"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$ROOT_DIR/config.json" | head -1)"
+CLIENT_PORT="$(sed -nE 's/.*"clientPort"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$ROOT_DIR/config.json" | head -1)"
 
 SERVER_PID=""
 CLIENT_PID=""
@@ -20,7 +22,24 @@ cleanup() {
   exit "$exit_code"
 }
 
+wait_for_processes() {
+  while true; do
+    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+      wait "$SERVER_PID" 2>/dev/null || return $?
+      return 1
+    fi
+    if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+      wait "$CLIENT_PID" 2>/dev/null || return $?
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 trap cleanup INT TERM EXIT
+
+echo "[start-dev] cleaning old dev processes..."
+"$ROOT_DIR/stop-dev.sh"
 
 echo "[start-dev] starting backend..."
 (
@@ -38,6 +57,8 @@ CLIENT_PID=$!
 
 echo "[start-dev] backend pid: $SERVER_PID"
 echo "[start-dev] frontend pid: $CLIENT_PID"
+echo "[start-dev] backend url: http://localhost:${SERVER_PORT:-8080}"
+echo "[start-dev] frontend url: http://localhost:${CLIENT_PORT:-3000}"
 echo "[start-dev] press Ctrl+C to stop both"
 
-wait -n "$SERVER_PID" "$CLIENT_PID"
+wait_for_processes
