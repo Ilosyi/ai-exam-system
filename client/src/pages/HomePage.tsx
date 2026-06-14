@@ -84,7 +84,7 @@ export function HomePage() {
     if (paper.attemptStatus === "in_progress" && paper.attemptId) {
       return {
         tagColor: isActive ? "blue" : "orange",
-        tagText: isActive ? "答题中" : "答题结束",
+        tagText: isActive ? "答题中" : "已开始未交卷",
         actionText: isActive ? "继续答题" : "已结束",
         disabled: !isActive,
         onAction: () => navigate(`/exam/${paper.attemptId}/take`),
