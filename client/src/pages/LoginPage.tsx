@@ -30,7 +30,7 @@ export function LoginPage() {
 
   const resolveNextPath = (role: "admin" | "teacher" | "student") => {
     if (redirectTo) {
-      if (role === "student" && redirectTo.startsWith("/exam")) {
+      if (role === "student" && (redirectTo.startsWith("/home") || redirectTo.startsWith("/exam"))) {
         return redirectTo;
       }
       if ((role === "admin" || role === "teacher") && !redirectTo.startsWith("/exam")) {

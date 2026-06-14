@@ -1,3 +1,4 @@
+import { useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { Button, Empty, Spin, Typography } from "antd";
 import { ArrowLeftOutlined, FileTextOutlined } from "@ant-design/icons";
@@ -18,13 +19,15 @@ interface TocItem {
 }
 
 function slugifyHeading(text: string) {
-  return text
+  const slug = text
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+
+  return slug || "section";
 }
 
 function childrenToText(children: ReactNode): string {
@@ -40,7 +43,19 @@ function childrenToText(children: ReactNode): string {
   return "";
 }
 
-function extractToc(markdown: string): TocItem[] {
+function makeUniqueSlug(baseSlug: string, usedSlugs: Map<string, number>) {
+  const usedCount = usedSlugs.get(baseSlug) ?? 0;
+  usedSlugs.set(baseSlug, usedCount + 1);
+
+  if (usedCount === 0) {
+    return baseSlug;
+  }
+  return `${baseSlug}-${usedCount + 1}`;
+}
+
+function buildHeadingList(markdown: string): TocItem[] {
+  const usedSlugs = new Map<string, number>();
+
   return markdown
     .split("\n")
     .map((line) => {
@@ -49,13 +64,14 @@ function extractToc(markdown: string): TocItem[] {
         return null;
       }
       const text = match[2].replace(/#+$/, "").trim();
+      const baseSlug = slugifyHeading(text);
       return {
-        id: slugifyHeading(text),
+        id: makeUniqueSlug(baseSlug, usedSlugs),
         text,
         level: match[1].length,
       };
     })
-    .filter((item): item is TocItem => Boolean(item?.id && item.text));
+    .filter((item): item is TocItem => Boolean(item));
 }
 
 export function DocumentReaderPage() {
@@ -65,12 +81,17 @@ export function DocumentReaderPage() {
   const { detail, loading: detailLoading } = useDocumentDetail(courseId, docId);
 
   const currentCourse = courses.find((course) => course.id === courseId);
-  const toc = extractToc(detail?.markdown ?? "");
+  const headingList = useMemo(() => buildHeadingList(detail?.markdown ?? ""), [detail?.markdown]);
+  const headingCursorRef = useRef(0);
+  headingCursorRef.current = 0;
+  const toc = headingList;
   const loading = coursesLoading || detailLoading;
 
   const renderHeading = (level: 1 | 2 | 3, children: ReactNode) => {
     const text = childrenToText(children);
-    const id = slugifyHeading(text);
+    const heading = headingList[headingCursorRef.current];
+    headingCursorRef.current += 1;
+    const id = heading?.id ?? slugifyHeading(text);
     const Tag = `h${level}` as "h1" | "h2" | "h3";
 
     return <Tag id={id}>{children}</Tag>;
@@ -128,7 +149,7 @@ export function DocumentReaderPage() {
             ) : (
               <nav className="reader-toc">
                 {toc.map((item) => (
-                  <a className={`reader-toc__item reader-toc__item--h${item.level}`} href={`#${item.id}`} key={`${item.id}-${item.text}`}>
+                  <a className={`reader-toc__item reader-toc__item--h${item.level}`} href={`#${item.id}`} key={item.id}>
                     {item.text}
                   </a>
                 ))}
