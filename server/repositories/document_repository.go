@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 var (
@@ -36,6 +37,7 @@ type CourseDocument struct {
 
 type DocumentRepository struct {
 	root string
+	mu   sync.Mutex
 }
 
 func NewDocumentRepository(root string) *DocumentRepository {
@@ -118,6 +120,9 @@ func (r *DocumentRepository) GetCourse(ctx context.Context, courseID string) (Co
 }
 
 func (r *DocumentRepository) SaveCourse(ctx context.Context, course CourseDocument) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -150,6 +155,9 @@ func (r *DocumentRepository) SaveCourse(ctx context.Context, course CourseDocume
 }
 
 func (r *DocumentRepository) DeleteCourse(ctx context.Context, courseID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -204,6 +212,9 @@ func (r *DocumentRepository) GetDocument(ctx context.Context, courseID, docID st
 }
 
 func (r *DocumentRepository) SaveDocument(ctx context.Context, courseID string, doc DocumentMeta, markdown string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -243,6 +254,9 @@ func (r *DocumentRepository) SaveDocument(ctx context.Context, courseID string, 
 }
 
 func (r *DocumentRepository) DeleteDocument(ctx context.Context, courseID, docID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}

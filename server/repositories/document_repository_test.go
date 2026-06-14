@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -147,6 +148,66 @@ func TestDocumentRepository_SaveDocumentLeavesIndexedMarkdownReadable(t *testing
 	}
 	if _, err := os.Stat(filepath.Join(root, "backend-go", course.Documents[0].ID+".md")); err != nil {
 		t.Fatalf("expected indexed markdown to exist: %v", err)
+	}
+}
+
+func TestDocumentRepository_SaveDocumentConcurrentCreatesKeepAllIndexes(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := NewDocumentRepository(root)
+
+	if err := repo.SaveCourse(ctx, CourseDocument{ID: "backend-go", Title: "服务端训练营"}); err != nil {
+		t.Fatalf("SaveCourse failed: %v", err)
+	}
+
+	docs := []DocumentMeta{
+		{ID: "day01-gin", Title: "DAY01", Order: 1},
+		{ID: "day02-gorm", Title: "DAY02", Order: 2},
+	}
+
+	const attempts = 50
+	for attempt := 0; attempt < attempts; attempt++ {
+		if err := repo.DeleteDocument(ctx, "backend-go", docs[0].ID); err != nil && !errors.Is(err, ErrDocumentNotFound) {
+			t.Fatalf("DeleteDocument %s failed: %v", docs[0].ID, err)
+		}
+		if err := repo.DeleteDocument(ctx, "backend-go", docs[1].ID); err != nil && !errors.Is(err, ErrDocumentNotFound) {
+			t.Fatalf("DeleteDocument %s failed: %v", docs[1].ID, err)
+		}
+
+		var wg sync.WaitGroup
+		errs := make(chan error, len(docs))
+		start := make(chan struct{})
+		for _, doc := range docs {
+			doc := doc
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				errs <- repo.SaveDocument(ctx, "backend-go", doc, "# "+doc.Title)
+			}()
+		}
+
+		close(start)
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			if err != nil {
+				t.Fatalf("SaveDocument failed on attempt %d: %v", attempt, err)
+			}
+		}
+
+		course, err := repo.GetCourse(ctx, "backend-go")
+		if err != nil {
+			t.Fatalf("GetCourse failed on attempt %d: %v", attempt, err)
+		}
+		if len(course.Documents) != len(docs) {
+			t.Fatalf("attempt %d expected %d indexed documents, got %#v", attempt, len(docs), course.Documents)
+		}
+		for _, doc := range docs {
+			if _, ok := findDocument(course.Documents, doc.ID); !ok {
+				t.Fatalf("attempt %d missing document %s in index %#v", attempt, doc.ID, course.Documents)
+			}
+		}
 	}
 }
 

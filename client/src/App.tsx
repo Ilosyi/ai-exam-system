@@ -16,6 +16,16 @@ import { DocumentReaderPage } from "./pages/DocumentReaderPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthProvider, getDefaultRouteByRole, useAuth } from "./hooks/useAuth";
 
+type AppRole = "admin" | "teacher" | "student";
+
+export const routeRoleAccess: Record<string, AppRole[]> = {
+  studentHome: ["admin", "student"],
+  documentReader: ["admin", "teacher", "student"],
+  studentExam: ["admin", "student"],
+  teacherWorkspace: ["admin", "teacher"],
+  adminOnly: ["admin"],
+};
+
 function FullPageSpin() {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -24,7 +34,7 @@ function FullPageSpin() {
   );
 }
 
-function RequireAuth({ roles, children }: { roles: Array<"admin" | "teacher" | "student">; children: JSX.Element }) {
+function RequireAuth({ roles, children }: { roles: AppRole[]; children: JSX.Element }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
@@ -69,7 +79,7 @@ export default function App() {
           <Route
             path="/home"
             element={
-              <RequireAuth roles={["admin", "student"]}>
+              <RequireAuth roles={routeRoleAccess.studentHome}>
                 <HomePage />
               </RequireAuth>
             }
@@ -77,7 +87,7 @@ export default function App() {
           <Route
             path="/home/courses/:courseId/docs/:docId"
             element={
-              <RequireAuth roles={["admin", "student"]}>
+              <RequireAuth roles={routeRoleAccess.documentReader}>
                 <DocumentReaderPage />
               </RequireAuth>
             }
@@ -85,7 +95,7 @@ export default function App() {
           <Route
             path="/exam"
             element={
-              <RequireAuth roles={["admin", "student"]}>
+              <RequireAuth roles={routeRoleAccess.studentExam}>
                 <Navigate to="/home" replace />
               </RequireAuth>
             }
@@ -93,7 +103,7 @@ export default function App() {
           <Route
             path="/exam/:id/take"
             element={
-              <RequireAuth roles={["admin", "student"]}>
+              <RequireAuth roles={routeRoleAccess.studentExam}>
                 <ExamTakePage />
               </RequireAuth>
             }
@@ -101,7 +111,7 @@ export default function App() {
           <Route
             path="/exam/:id/result"
             element={
-              <RequireAuth roles={["admin", "student"]}>
+              <RequireAuth roles={routeRoleAccess.studentExam}>
                 <ExamResultPage />
               </RequireAuth>
             }
@@ -109,7 +119,7 @@ export default function App() {
 
           <Route
             element={
-              <RequireAuth roles={["admin", "teacher"]}>
+              <RequireAuth roles={routeRoleAccess.teacherWorkspace}>
                 <AppLayout />
               </RequireAuth>
             }
@@ -124,7 +134,7 @@ export default function App() {
             <Route
               path="/users"
               element={
-                <RequireAuth roles={["admin"]}>
+                <RequireAuth roles={routeRoleAccess.adminOnly}>
                   <UserManagePage />
                 </RequireAuth>
               }
