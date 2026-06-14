@@ -70,6 +70,10 @@ function getFenceMarker(line: string) {
   };
 }
 
+function isIndentedCodeLine(line: string) {
+  return line.startsWith("\t") || /^ {4,}/.test(line);
+}
+
 function buildHeadingList(markdown: string): TocItem[] {
   const usedSlugs = new Map<string, number>();
   let fence: { char: string; length: number } | null = null;
@@ -89,6 +93,9 @@ function buildHeadingList(markdown: string): TocItem[] {
         return null;
       }
       if (fence) {
+        return null;
+      }
+      if (isIndentedCodeLine(line)) {
         return null;
       }
 
