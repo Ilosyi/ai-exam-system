@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { Button, Empty, Spin, Typography } from "antd";
 import { ArrowLeftOutlined, FileTextOutlined } from "@ant-design/icons";
@@ -122,15 +122,14 @@ export function DocumentReaderPage() {
 
   const currentCourse = courses.find((course) => course.id === courseId);
   const headingList = useMemo(() => buildHeadingList(detail?.markdown ?? ""), [detail?.markdown]);
-  const headingCursorRef = useRef(0);
-  headingCursorRef.current = 0;
   const toc = headingList;
   const loading = coursesLoading || detailLoading;
+  let headingRenderIndex = 0;
 
   const renderHeading = (level: 1 | 2 | 3, children: ReactNode) => {
     const text = childrenToText(children);
-    const heading = headingList[headingCursorRef.current];
-    headingCursorRef.current += 1;
+    const heading = headingList[headingRenderIndex];
+    headingRenderIndex += 1;
     const id = heading?.id ?? slugifyHeading(text);
     const Tag = `h${level}` as "h1" | "h2" | "h3";
 
