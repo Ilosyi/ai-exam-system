@@ -53,12 +53,45 @@ function makeUniqueSlug(baseSlug: string, usedSlugs: Map<string, number>) {
   return `${baseSlug}-${usedCount + 1}`;
 }
 
+function getFenceMarker(line: string) {
+  const leadingSpaces = line.match(/^ */)?.[0].length ?? 0;
+  if (leadingSpaces > 3) {
+    return null;
+  }
+
+  const match = /^(`{3,}|~{3,})/.exec(line.slice(leadingSpaces));
+  if (!match) {
+    return null;
+  }
+
+  return {
+    char: match[1][0],
+    length: match[1].length,
+  };
+}
+
 function buildHeadingList(markdown: string): TocItem[] {
   const usedSlugs = new Map<string, number>();
+  let fence: { char: string; length: number } | null = null;
 
   return markdown
     .split("\n")
     .map((line) => {
+      const marker = getFenceMarker(line);
+      if (marker) {
+        if (!fence) {
+          fence = marker;
+          return null;
+        }
+        if (marker.char === fence.char && marker.length >= fence.length) {
+          fence = null;
+        }
+        return null;
+      }
+      if (fence) {
+        return null;
+      }
+
       const match = /^(#{1,3})\s+(.+)$/.exec(line.trim());
       if (!match) {
         return null;
