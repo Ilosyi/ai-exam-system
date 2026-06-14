@@ -9,9 +9,10 @@ import { PaperManagePage } from "./pages/PaperManagePage";
 import { PaperEditPage } from "./pages/PaperEditPage";
 import { ClassManagePage } from "./pages/ClassManagePage";
 import { UserManagePage } from "./pages/UserManagePage";
-import { ExamListPage } from "./pages/ExamListPage";
 import { ExamTakePage } from "./pages/ExamTakePage";
 import { ExamResultPage } from "./pages/ExamResultPage";
+import { HomePage } from "./pages/HomePage";
+import { DocumentReaderPage } from "./pages/DocumentReaderPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthProvider, getDefaultRouteByRole, useAuth } from "./hooks/useAuth";
 
@@ -66,10 +67,26 @@ export default function App() {
           />
 
           <Route
+            path="/home"
+            element={
+              <RequireAuth roles={["admin", "student"]}>
+                <HomePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/home/courses/:courseId/docs/:docId"
+            element={
+              <RequireAuth roles={["admin", "student"]}>
+                <DocumentReaderPage />
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/exam"
             element={
               <RequireAuth roles={["admin", "student"]}>
-                <ExamListPage />
+                <Navigate to="/home" replace />
               </RequireAuth>
             }
           />
