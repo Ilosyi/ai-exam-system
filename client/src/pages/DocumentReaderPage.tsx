@@ -122,15 +122,26 @@ export function DocumentReaderPage() {
 
   const currentCourse = courses.find((course) => course.id === courseId);
   const headingList = useMemo(() => buildHeadingList(detail?.markdown ?? ""), [detail?.markdown]);
+  const headingIdsByText = useMemo(() => {
+    const idsByText = new Map<string, string[]>();
+    headingList.forEach((heading) => {
+      const normalizedText = heading.text.trim();
+      const ids = idsByText.get(normalizedText) ?? [];
+      ids.push(heading.id);
+      idsByText.set(normalizedText, ids);
+    });
+    return idsByText;
+  }, [headingList]);
   const toc = headingList;
   const loading = coursesLoading || detailLoading;
-  let headingRenderIndex = 0;
+  const renderedHeadingCount = new Map<string, number>();
 
   const renderHeading = (level: 1 | 2 | 3, children: ReactNode) => {
     const text = childrenToText(children);
-    const heading = headingList[headingRenderIndex];
-    headingRenderIndex += 1;
-    const id = heading?.id ?? slugifyHeading(text);
+    const normalizedText = text.trim();
+    const usedCount = renderedHeadingCount.get(normalizedText) ?? 0;
+    renderedHeadingCount.set(normalizedText, usedCount + 1);
+    const id = headingIdsByText.get(normalizedText)?.[usedCount] ?? slugifyHeading(normalizedText);
     const Tag = `h${level}` as "h1" | "h2" | "h3";
 
     return <Tag id={id}>{children}</Tag>;
