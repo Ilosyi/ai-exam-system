@@ -17,8 +17,8 @@ vi.mock('../api/client', () => ({
 }))
 
 describe('getDefaultRouteByRole', () => {
-    it('returns /exam for student', () => {
-        expect(getDefaultRouteByRole('student')).toBe('/exam')
+    it('returns /home for student', () => {
+        expect(getDefaultRouteByRole('student')).toBe('/home')
     })
 
     it('returns /questions for teacher', () => {
