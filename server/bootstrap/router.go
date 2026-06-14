@@ -33,6 +33,9 @@ func registerAPIRoutes(r *gin.Engine, deps *dependencies) {
 		protected.GET("/auth/me", deps.authHandler.Me)
 		protected.POST("/auth/logout", deps.authHandler.Logout)
 		protected.POST("/auth/change-password", deps.authHandler.ChangePassword)
+		protected.GET("/documents/courses", deps.documentHandler.ListCourses)
+		protected.GET("/documents/courses/:courseId", deps.documentHandler.GetCourse)
+		protected.GET("/documents/courses/:courseId/docs/:docId", deps.documentHandler.GetDocument)
 
 		adminRoutes := protected.Group("")
 		adminRoutes.Use(middleware.RequireRoles("admin"))
@@ -68,6 +71,12 @@ func registerAPIRoutes(r *gin.Engine, deps *dependencies) {
 		teacherRoutes.GET("/classes/:id/students", deps.classHandler.ListStudents)
 		teacherRoutes.POST("/classes/:id/students/batch-edit", deps.classHandler.BatchEditStudents)
 		teacherRoutes.GET("/classes/:id/students/:studentId/exams", deps.classHandler.GetStudentExams)
+		teacherRoutes.POST("/documents/courses", deps.documentHandler.CreateCourse)
+		teacherRoutes.PUT("/documents/courses/:courseId", deps.documentHandler.UpdateCourse)
+		teacherRoutes.DELETE("/documents/courses/:courseId", deps.documentHandler.DeleteCourse)
+		teacherRoutes.POST("/documents/courses/:courseId/docs", deps.documentHandler.CreateDocument)
+		teacherRoutes.PUT("/documents/courses/:courseId/docs/:docId", deps.documentHandler.UpdateDocument)
+		teacherRoutes.DELETE("/documents/courses/:courseId/docs/:docId", deps.documentHandler.DeleteDocument)
 
 		studentRoutes := protected.Group("")
 		studentRoutes.Use(middleware.RequireRoles("admin", "student"))
