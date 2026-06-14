@@ -51,6 +51,9 @@ func (r *DocumentRepository) ListCourses(ctx context.Context) ([]CourseDocument,
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := r.ensureRootSafe(); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(r.root, 0o755); err != nil {
 		return nil, err
 	}
@@ -64,6 +67,9 @@ func (r *DocumentRepository) ListCourses(ctx context.Context) ([]CourseDocument,
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil, ErrInvalidDocumentSlug
 		}
 
 		coursePath, err := r.safePath(entry.Name(), courseMetadataFile)
@@ -124,6 +130,9 @@ func (r *DocumentRepository) SaveCourse(ctx context.Context, course CourseDocume
 		return err
 	}
 	if err := os.MkdirAll(courseDir, 0o755); err != nil {
+		return err
+	}
+	if err := r.rejectSymlinkPath(course.ID); err != nil {
 		return err
 	}
 
@@ -214,20 +223,20 @@ func (r *DocumentRepository) SaveDocument(ctx context.Context, courseID string, 
 	if err != nil {
 		return err
 	}
-	tmpPath, err := writeTempFileForAtomicReplace(docPath, []byte(markdown), 0o644)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpPath)
 
-	originalCourse := course
+	originalCourse := cloneCourseDocument(course)
+	_, existed := findDocument(course.Documents, doc.ID)
 	upsertDocument(&course, doc)
-	if err := r.writeCourse(ctx, course); err != nil {
+	if err := writeFileAtomically(docPath, []byte(markdown), 0o644); err != nil {
 		return err
 	}
-
-	if err := os.Rename(tmpPath, docPath); err != nil {
-		_ = r.writeCourse(ctx, originalCourse)
+	if err := r.writeCourse(ctx, course); err != nil {
+		if !existed {
+			_ = os.Remove(docPath)
+		}
+		if existed {
+			_ = r.writeCourse(ctx, originalCourse)
+		}
 		return err
 	}
 	return nil
@@ -249,6 +258,7 @@ func (r *DocumentRepository) DeleteDocument(ctx context.Context, courseID, docID
 		return err
 	}
 
+	originalCourse := cloneCourseDocument(course)
 	documents := course.Documents[:0]
 	found := false
 	for _, doc := range course.Documents {
@@ -261,17 +271,25 @@ func (r *DocumentRepository) DeleteDocument(ctx context.Context, courseID, docID
 	if !found {
 		return ErrDocumentNotFound
 	}
-	course.Documents = documents
-
-	if err := r.writeCourse(ctx, course); err != nil {
-		return err
-	}
-
 	docPath, err := r.documentPath(courseID, docID)
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(docPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+
+	tmpPath, err := renameFileAside(docPath)
+	if err != nil {
+		return err
+	}
+	if tmpPath != "" {
+		defer os.Remove(tmpPath)
+	}
+
+	course.Documents = documents
+	if err := r.writeCourse(ctx, course); err != nil {
+		if tmpPath != "" {
+			_ = os.Rename(tmpPath, docPath)
+		}
+		_ = r.writeCourse(ctx, originalCourse)
 		return err
 	}
 
@@ -299,6 +317,9 @@ func (r *DocumentRepository) writeCourse(ctx context.Context, course CourseDocum
 	if err := os.MkdirAll(courseDir, 0o755); err != nil {
 		return err
 	}
+	if err := r.rejectSymlinkPath(course.ID); err != nil {
+		return err
+	}
 
 	coursePath, err := r.safePath(course.ID, courseMetadataFile)
 	if err != nil {
@@ -318,6 +339,9 @@ func (r *DocumentRepository) documentPath(courseID, docID string) (string, error
 }
 
 func (r *DocumentRepository) safePath(parts ...string) (string, error) {
+	if err := r.ensureRootSafe(); err != nil {
+		return "", err
+	}
 	targetParts := append([]string{r.root}, parts...)
 	target := filepath.Join(targetParts...)
 	absTarget, err := filepath.Abs(target)
@@ -332,8 +356,46 @@ func (r *DocumentRepository) safePath(parts ...string) (string, error) {
 	if rel == ".." || rel == "."+string(filepath.Separator)+".." || startsWithParent(rel) || filepath.IsAbs(rel) {
 		return "", ErrInvalidDocumentSlug
 	}
+	if err := r.rejectSymlinkPath(parts...); err != nil {
+		return "", err
+	}
 
 	return absTarget, nil
+}
+
+func (r *DocumentRepository) ensureRootSafe() error {
+	info, err := os.Lstat(r.root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return ErrInvalidDocumentSlug
+	}
+	if !info.IsDir() {
+		return ErrInvalidDocumentSlug
+	}
+	return nil
+}
+
+func (r *DocumentRepository) rejectSymlinkPath(parts ...string) error {
+	current := r.root
+	for _, part := range parts {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return ErrInvalidDocumentSlug
+		}
+	}
+	return nil
 }
 
 func validateSlug(slug string) error {
@@ -356,6 +418,11 @@ func readCourseFile(path string) (CourseDocument, error) {
 	return course, nil
 }
 
+func cloneCourseDocument(course CourseDocument) CourseDocument {
+	course.Documents = append([]DocumentMeta(nil), course.Documents...)
+	return course
+}
+
 func writeFileAtomically(path string, data []byte, perm os.FileMode) error {
 	tmpPath, err := writeTempFileForAtomicReplace(path, data, perm)
 	if err != nil {
@@ -364,6 +431,36 @@ func writeFileAtomically(path string, data []byte, perm os.FileMode) error {
 	defer os.Remove(tmpPath)
 
 	return os.Rename(tmpPath, path)
+}
+
+func renameFileAside(path string) (string, error) {
+	tmpPath, err := tempPathFor(path)
+	if err != nil {
+		return "", err
+	}
+	if err := os.Rename(path, tmpPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	return tmpPath, nil
+}
+
+func tempPathFor(path string) (string, error) {
+	file, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := file.Name()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", err
+	}
+	if err := os.Remove(tmpPath); err != nil {
+		return "", err
+	}
+	return tmpPath, nil
 }
 
 func writeTempFileForAtomicReplace(path string, data []byte, perm os.FileMode) (string, error) {

@@ -67,6 +67,25 @@ func TestDocumentRepository_RejectsUnsafeSlug(t *testing.T) {
 	}
 }
 
+func TestDocumentRepository_RejectsSymlinkCourseDirectory(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	outside := t.TempDir()
+	repo := NewDocumentRepository(root)
+
+	if err := os.Symlink(outside, filepath.Join(root, "backend-go")); err != nil {
+		t.Fatalf("Symlink failed: %v", err)
+	}
+
+	err := repo.SaveCourse(ctx, CourseDocument{ID: "backend-go", Title: "服务端训练营"})
+	if !errors.Is(err, ErrInvalidDocumentSlug) {
+		t.Fatalf("expected ErrInvalidDocumentSlug for symlink course directory, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "course.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected outside course.json to remain absent, stat err=%v", err)
+	}
+}
+
 func TestDocumentRepository_DeleteCourseRemovesDirectory(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -104,6 +123,49 @@ func TestDocumentRepository_DeleteDocumentRemovesCourseIndex(t *testing.T) {
 	}
 	if len(course.Documents) != 0 {
 		t.Fatalf("expected document index to be empty, got %#v", course.Documents)
+	}
+}
+
+func TestDocumentRepository_SaveDocumentLeavesIndexedMarkdownReadable(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := NewDocumentRepository(root)
+
+	if err := repo.SaveCourse(ctx, CourseDocument{ID: "backend-go", Title: "服务端训练营"}); err != nil {
+		t.Fatalf("SaveCourse failed: %v", err)
+	}
+	if err := repo.SaveDocument(ctx, "backend-go", DocumentMeta{ID: "day01-gin", Title: "DAY01", Order: 1}, "hello"); err != nil {
+		t.Fatalf("SaveDocument failed: %v", err)
+	}
+
+	course, err := repo.GetCourse(ctx, "backend-go")
+	if err != nil {
+		t.Fatalf("GetCourse failed: %v", err)
+	}
+	if len(course.Documents) != 1 {
+		t.Fatalf("expected one indexed document, got %#v", course.Documents)
+	}
+	if _, err := os.Stat(filepath.Join(root, "backend-go", course.Documents[0].ID+".md")); err != nil {
+		t.Fatalf("expected indexed markdown to exist: %v", err)
+	}
+}
+
+func TestDocumentRepository_DeleteDocumentRemovesMarkdownBody(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	repo := NewDocumentRepository(root)
+
+	if err := repo.SaveCourse(ctx, CourseDocument{ID: "backend-go", Title: "服务端训练营"}); err != nil {
+		t.Fatalf("SaveCourse failed: %v", err)
+	}
+	if err := repo.SaveDocument(ctx, "backend-go", DocumentMeta{ID: "day01-gin", Title: "DAY01", Order: 1}, "hello"); err != nil {
+		t.Fatalf("SaveDocument failed: %v", err)
+	}
+	if err := repo.DeleteDocument(ctx, "backend-go", "day01-gin"); err != nil {
+		t.Fatalf("DeleteDocument failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "backend-go", "day01-gin.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected markdown body to be removed, stat err=%v", err)
 	}
 }
 
