@@ -3,16 +3,28 @@ import { Spin } from "antd";
 import { AppLayout } from "./components/AppLayout";
 import { QuestionPage } from "./pages/QuestionPage";
 import { NotesPage } from "./pages/NotesPage";
+import { DocumentManagePage } from "./pages/DocumentManagePage";
 import { PaperGeneratePage } from "./pages/PaperGeneratePage";
 import { PaperManagePage } from "./pages/PaperManagePage";
 import { PaperEditPage } from "./pages/PaperEditPage";
 import { ClassManagePage } from "./pages/ClassManagePage";
 import { UserManagePage } from "./pages/UserManagePage";
-import { ExamListPage } from "./pages/ExamListPage";
 import { ExamTakePage } from "./pages/ExamTakePage";
 import { ExamResultPage } from "./pages/ExamResultPage";
+import { HomePage } from "./pages/HomePage";
+import { DocumentReaderPage } from "./pages/DocumentReaderPage";
 import { LoginPage } from "./pages/LoginPage";
 import { AuthProvider, getDefaultRouteByRole, useAuth } from "./hooks/useAuth";
+
+type AppRole = "admin" | "teacher" | "student";
+
+export const routeRoleAccess: Record<string, AppRole[]> = {
+  studentHome: ["admin", "student"],
+  documentReader: ["admin", "teacher", "student"],
+  studentExam: ["admin", "student"],
+  teacherWorkspace: ["admin", "teacher"],
+  adminOnly: ["admin"],
+};
 
 function FullPageSpin() {
   return (
@@ -22,7 +34,7 @@ function FullPageSpin() {
   );
 }
 
-function RequireAuth({ roles, children }: { roles: Array<"admin" | "teacher" | "student">; children: JSX.Element }) {
+function RequireAuth({ roles, children }: { roles: AppRole[]; children: JSX.Element }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
@@ -65,17 +77,33 @@ export default function App() {
           />
 
           <Route
+            path="/home"
+            element={
+              <RequireAuth roles={routeRoleAccess.studentHome}>
+                <HomePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/home/courses/:courseId/docs/:docId"
+            element={
+              <RequireAuth roles={routeRoleAccess.documentReader}>
+                <DocumentReaderPage />
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/exam"
             element={
-              <RequireAuth roles={["admin", "student"]}>
-                <ExamListPage />
+              <RequireAuth roles={routeRoleAccess.studentExam}>
+                <Navigate to="/home" replace />
               </RequireAuth>
             }
           />
           <Route
             path="/exam/:id/take"
             element={
-              <RequireAuth roles={["admin", "student"]}>
+              <RequireAuth roles={routeRoleAccess.studentExam}>
                 <ExamTakePage />
               </RequireAuth>
             }
@@ -83,7 +111,7 @@ export default function App() {
           <Route
             path="/exam/:id/result"
             element={
-              <RequireAuth roles={["admin", "student"]}>
+              <RequireAuth roles={routeRoleAccess.studentExam}>
                 <ExamResultPage />
               </RequireAuth>
             }
@@ -91,13 +119,14 @@ export default function App() {
 
           <Route
             element={
-              <RequireAuth roles={["admin", "teacher"]}>
+              <RequireAuth roles={routeRoleAccess.teacherWorkspace}>
                 <AppLayout />
               </RequireAuth>
             }
           >
             <Route path="/questions" element={<QuestionPage />} />
             <Route path="/notes" element={<NotesPage />} />
+            <Route path="/documents" element={<DocumentManagePage />} />
             <Route path="/papers" element={<PaperManagePage />} />
             <Route path="/papers/generate" element={<PaperGeneratePage />} />
             <Route path="/papers/:id/edit" element={<PaperEditPage />} />
@@ -105,7 +134,7 @@ export default function App() {
             <Route
               path="/users"
               element={
-                <RequireAuth roles={["admin"]}>
+                <RequireAuth roles={routeRoleAccess.adminOnly}>
                   <UserManagePage />
                 </RequireAuth>
               }

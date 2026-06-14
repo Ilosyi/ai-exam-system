@@ -1,0 +1,13 @@
+{
+  "id": "backend-go",
+  "title": "服务端训练营",
+  "description": "Go 后端基础课",
+  "order": 1,
+  "documents": [
+    {
+      "id": "day01-gin",
+      "title": "DAY01 - Gin 基础",
+      "order": 1
+    }
+  ]
+}

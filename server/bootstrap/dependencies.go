@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gorm.io/gorm"
@@ -24,6 +25,7 @@ type dependencies struct {
 	noteHandler     *handlers.NoteHandler
 	authHandler     *handlers.AuthHandler
 	classHandler    *handlers.ClassHandler
+	documentHandler *handlers.DocumentHandler
 }
 
 func initDependencies(projectRoot string, db *gorm.DB) (*dependencies, error) {
@@ -32,6 +34,8 @@ func initDependencies(projectRoot string, db *gorm.DB) (*dependencies, error) {
 	examRepo := repositories.NewExamRepository(db)
 	userRepo := repositories.NewUserRepository(db)
 	classRepo := repositories.NewClassRepository(db)
+	documentRepo := repositories.NewDocumentRepository(filepath.Join(projectRoot, "course-docs"))
+	documentService := services.NewDocumentService(documentRepo)
 
 	aiService, err := services.NewAIService(projectRoot)
 	if err != nil {
@@ -53,6 +57,7 @@ func initDependencies(projectRoot string, db *gorm.DB) (*dependencies, error) {
 		noteHandler:     handlers.NewNoteHandler(projectRoot),
 		authHandler:     handlers.NewAuthHandler(userRepo, authService),
 		classHandler:    handlers.NewClassHandler(classRepo),
+		documentHandler: handlers.NewDocumentHandler(documentService),
 	}, nil
 }
 

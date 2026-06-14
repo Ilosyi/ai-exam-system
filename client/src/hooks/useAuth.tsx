@@ -42,7 +42,7 @@ function writeStoredSession(session: StoredSession | null) {
 
 export function getDefaultRouteByRole(role: AuthUser["role"]): string {
   if (role === "student") {
-    return "/exam";
+    return "/home";
   }
   return "/questions";
 }
